@@ -7,17 +7,17 @@ tasks:
   up:
     desc: "Create/update a workload's instance. Usage: task up -- <name>"
     cmds:
-      - tf {{.CLI_ARGS}} apply
+      - tf {{index .CLI_ARGS_LIST 0}} apply
 
   down:
     desc: "Destroy a workload's instance. Usage: task down -- <name>"
     cmds:
-      - tf {{.CLI_ARGS}} destroy
+      - tf {{index .CLI_ARGS_LIST 0}} destroy
 
   plan:
     desc: "Plan a workload's instance. Usage: task plan -- <name>"
     cmds:
-      - tf {{.CLI_ARGS}} plan
+      - tf {{index .CLI_ARGS_LIST 0}} plan
 
   bootstrap:
     desc: "Re-seed root SSH on an instance if the provisioner did not run. Usage: task bootstrap -- <name>"
@@ -25,9 +25,20 @@ tasks:
       - incus file push --uid 0 --gid 0 --mode 600 ~/.ssh/id_ed25519.pub {{index .CLI_ARGS_LIST 0}}/root/.ssh/authorized_keys --create-dirs
 
   deploy:
-    desc: "Deploy a guest's NixOS system. Usage: task deploy -- <name> <ip>"
+    desc: "Deploy a guest's NixOS system. Usage: task deploy -- <name>"
     cmds:
-      - NIX_SSHOPTS="-o StrictHostKeyChecking=accept-new" nixos-rebuild switch --flake .#{{index .CLI_ARGS_LIST 0}} --target-host root@{{index .CLI_ARGS_LIST 1}} --build-host admin@{{.HOST}}
+      - |
+        name="{{index .CLI_ARGS_LIST 0}}"
+        ip="$(incus list "$name" -c 4 --format csv | head -1)"
+        ip="${ip%% *}"
+        if [ -z "$ip" ]; then
+          echo "no IPv4 for instance '$name' - is it running?" >&2
+          exit 1
+        fi
+        echo "deploying to $name ($ip)"
+        NIX_SSHOPTS="-o StrictHostKeyChecking=accept-new" \
+          nixos-rebuild switch --flake ".#$name" \
+          --target-host "root@$ip" --build-host "admin@{{.HOST}}"
 
   fmt:
     desc: Format all Nix files

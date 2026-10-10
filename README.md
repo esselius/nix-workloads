@@ -46,6 +46,12 @@ instance directly by its `10.43.0.x` address.
 - Off the VPN: reach them through the host with ProxyJump (the host sits on the
   bridge at `10.43.0.1`).
 
+Each workload pins a **static** `10.43.0.x` (the instance-level `eth0` device in
+`terraform/<name>/default.nix`), so clients have a stable target and a cross-host
+move keeps the same IP (same-subnet bridge). No DNS or discovery service is
+involved. The bridge name is shared via the `local.vpnBridge` option in
+`terraform/common.nix`.
+
 Don't mix networks: `vpn` overrides `default`'s `eth0`, so an instance is on
 `incusbr-vpn` *or* `incusbr0`, never both. Keep interdependent services on the
 same bridge.
@@ -71,63 +77,66 @@ same bridge.
 
    and `nixos-rebuild switch` the host. (A one-time join token via the
    provider's `token` field also works, but is not repeatable.)
-3. **A remote builder for `aarch64-linux`** if deploying from the Mac without
-   `--build-host` (Determinate Nix's Linux builder).
+3. **SSH access to `rpi5-8gb` as `admin`** - `task deploy` uses it as the
+   `--build-host` (the guest cannot sandbox a build, and the Mac's
+   `aarch64-linux` builder isn't used).
 
 ## Usage
 
 ```fish
-nix develop            # opentofu, terranix, incus client, tf wrapper
+nix develop
 
-# Layer 2 - create/update the instance:
-tf example plan
-tf example apply       # or: nix run .#example
-tf example destroy     # or: nix run .#example.destroy
+task plan   -- example             # plan the instance
+task up     -- example             # create/update it (tf apply)
+task down   -- example             # destroy it
 
-# Layer 3 - deploy the OS (see "Deploy" below):
-nixos-rebuild switch --flake .#example --target-host root@<instance-ip>
+task deploy -- example             # nixos-rebuild the guest onto it (see Deploy)
+task fmt                           # nix fmt
+task check                         # nix flake check
 ```
 
-`tf <name> <action>` builds `terraform/<name>/default.nix` into
-`config.tf.json` and runs OpenTofu in `terraform/<name>/`.
+`task <task> -- <args>` forwards args to the wrapped command. `up`/`down`/`plan`
+wrap `tf <name> <action>` (which builds `terraform/<name>/default.nix` into
+`config.tf.json` and runs OpenTofu there); `deploy` wraps `nixos-rebuild`. The
+raw terranix apps (`nix run .#example`, `.#example.destroy`) still work too.
 
 ## Deploy (first boot)
 
-`tf apply` seeds root's SSH key automatically: a `local-exec` provisioner on the
-instance runs `incus file push --uid 0 --gid 0 --mode 600` (the base image ships
-no cloud-init, so this is the only key-injection path; the flags matter, or the
-push copies the Mac's source ownership/mode and trips sshd's `StrictModes`).
+`task up` (the terranix apply) seeds root's SSH key automatically: a
+`local-exec` provisioner on the instance runs `incus file push --uid 0 --gid 0
+--mode 600` (the base image ships no cloud-init, so this is the only
+key-injection path; the flags matter, or the push copies the Mac's source
+ownership/mode and trips sshd's `StrictModes`).
 
-The instance is on the WireGuard-reachable bridge (`10.43.0.x`). Build on the
-host with `--build-host admin@rpi5-8gb`: the unprivileged guest has no user
-namespaces, so Nix cannot sandbox a build inside it, and the Mac's
-`aarch64-linux` builder isn't used for this. Then:
+`task deploy -- example` looks the instance's address up from incus (`incus list
+example -c 4 --format csv`) and runs `nixos-rebuild switch --flake .#example
+--target-host root@<ip> --build-host admin@rpi5-8gb`, with `NIX_SSHOPTS` set to
+accept the guest's host key. It builds on the host (`--build-host`): the
+unprivileged guest has no user namespaces, so Nix cannot sandbox a build inside
+it, and the Mac's `aarch64-linux` builder isn't used for this.
 
-```fish
-set ip (incus list example -c 4 --format csv)   # the 10.43.0.x address
-set -x NIX_SSHOPTS "-o StrictHostKeyChecking=accept-new"
+Off the VPN, add a ProxyJump for the guest. Do it in `~/.ssh/config` rather than
+in `NIX_SSHOPTS`, since the latter also applies to the build-host connection:
 
-# on the VPN:
-nixos-rebuild switch --flake .#example \
-  --target-host root@$ip --build-host admin@rpi5-8gb
-
-# off the VPN, also jump through the host to reach the guest:
-set -x NIX_SSHOPTS "-o StrictHostKeyChecking=accept-new -o ProxyJump=admin@rpi5-8gb"
-nixos-rebuild switch --flake .#example \
-  --target-host root@$ip --build-host admin@rpi5-8gb
+```
+Host 10.43.0.*
+  User root
+  ProxyJump admin@rpi5-8gb
 ```
 
 The provisioner runs only on create; after the first switch the key is declared
-in `guests/example/default.nix`, so later rebuilds only need the last command.
+in `guests/example/default.nix`, so later rebuilds only need
+`task deploy -- <name>`.
 
 ## Adding a workload
 
-1. `cp -r terraform/example terraform/<name>` and rename the resource.
+1. `cp -r terraform/example terraform/<name>`, rename the resource, and set a
+   unique `staticIp` (`10.43.0.x`).
 2. Register it in `flake.nix` under `terranix.terranixConfigurations` (and add
    it to the `workloads` list used by the `tf` wrapper).
 3. `cp -r guests/example guests/<name>`, set `networking.hostName`, and add the
    system to `flake.nixosConfigurations`.
-4. `nix flake check`, then `tf <name> apply` and deploy as above.
+4. `task check`, then `task up -- <name>` and `task deploy -- <name> <staticIp>`.
 
 ## Migration plan (from `adama`)
 
