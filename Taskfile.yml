@@ -1,0 +1,40 @@
+version: "3"
+
+vars:
+  HOST: rpi5-8gb
+
+tasks:
+  up:
+    desc: "Create/update a workload's instance. Usage: task up -- <name>"
+    cmds:
+      - tf {{.CLI_ARGS}} apply
+
+  down:
+    desc: "Destroy a workload's instance. Usage: task down -- <name>"
+    cmds:
+      - tf {{.CLI_ARGS}} destroy
+
+  plan:
+    desc: "Plan a workload's instance. Usage: task plan -- <name>"
+    cmds:
+      - tf {{.CLI_ARGS}} plan
+
+  bootstrap:
+    desc: "Re-seed root SSH on an instance if the provisioner did not run. Usage: task bootstrap -- <name>"
+    cmds:
+      - incus file push --uid 0 --gid 0 --mode 600 ~/.ssh/id_ed25519.pub {{index .CLI_ARGS_LIST 0}}/root/.ssh/authorized_keys --create-dirs
+
+  deploy:
+    desc: "Deploy a guest's NixOS system. Usage: task deploy -- <name> <ip>"
+    cmds:
+      - NIX_SSHOPTS="-o StrictHostKeyChecking=accept-new" nixos-rebuild switch --flake .#{{index .CLI_ARGS_LIST 0}} --target-host root@{{index .CLI_ARGS_LIST 1}} --build-host admin@{{.HOST}}
+
+  fmt:
+    desc: Format all Nix files
+    cmds:
+      - nix fmt
+
+  check:
+    desc: Evaluate every guest system and terranix config
+    cmds:
+      - nix flake check

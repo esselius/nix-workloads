@@ -1,0 +1,9 @@
+result
+result-*
+.direnv
+.terraform
+terraform.tfstate
+terraform.tfstate.*
+*.tfstate
+*.tfstate.*
+terraform/*/config.tf.json
