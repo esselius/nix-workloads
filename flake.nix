@@ -10,6 +10,11 @@
       url = "github:terranix/terranix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -18,6 +23,7 @@
       flake-parts,
       nixpkgs,
       terranix,
+      sops-nix,
       ...
     }:
     flake-parts.lib.mkFlake { inherit inputs; } {
@@ -31,7 +37,18 @@
       flake.nixosConfigurations = {
         example = nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
-          modules = [ ./guests/example ];
+          modules = [
+            ./modules/lxc-credentials.nix
+            ./guests/example
+          ];
+        };
+        mosquitto = nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          modules = [
+            sops-nix.nixosModules.sops
+            ./modules/lxc-credentials.nix
+            ./guests/mosquitto
+          ];
         };
       };
 
@@ -45,7 +62,10 @@
         let
           # Workloads are sibling directories under terraform/; each becomes a
           # terranix configuration named after the directory.
-          workloads = [ "example" ];
+          workloads = [
+            "example"
+            "mosquitto"
+          ];
 
           tf = pkgs.writeShellApplication {
             name = "tf";
@@ -92,6 +112,13 @@
                 ./terraform/example
               ];
             };
+            mosquitto = {
+              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+              modules = [
+                ./terraform/common.nix
+                ./terraform/mosquitto
+              ];
+            };
           };
 
           devShells.default = pkgs.mkShell {
@@ -101,8 +128,17 @@
               # Drive the incus remotes from the Mac for bootstrap/debugging.
               pkgs.incus-lts.client
               pkgs.nixfmt
+              # Edit secrets and derive age recipients from SSH keys.
+              pkgs.sops
+              pkgs.age
+              pkgs.ssh-to-age
               tf
             ];
+            # sops does not read ~/.ssh/id_ed25519 directly; derive a native age
+            # identity from it on the fly (matches nix-homelab-hosts).
+            shellHook = ''
+              export SOPS_AGE_KEY_CMD="ssh-to-age -private-key -i $HOME/.ssh/id_ed25519"
+            '';
           };
 
           formatter = pkgs.writeShellApplication {
@@ -127,6 +163,7 @@
               # systems evaluate.
               guestDrvs = [
                 self.nixosConfigurations.example.config.system.build.toplevel
+                self.nixosConfigurations.mosquitto.config.system.build.toplevel
               ];
               terraformConfigs = builtins.attrValues (
                 lib.mapAttrs (_: cfg: cfg.result.terraformConfiguration) config.terranix.terranixConfigurations

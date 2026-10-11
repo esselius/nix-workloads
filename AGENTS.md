@@ -28,6 +28,22 @@ rebuilt/replaced without taking lights, heating, or MQTT down.
 - Never commit plaintext secrets. Smart-home services need broker passwords, the
   Zigbee2MQTT network key, and Postgres credentials; wire those through sops/age
   the same way `nix-homelab-hosts` does, not as literals.
+- `modules/lxc-credentials.nix` provides the opt-in option
+  `local.lxc.allowSystemdCredentials` (default off), which overlays
+  `pkgs.distrobuilder.generator` to stop it clearing `LoadCredential=` for
+  non-nested containers. Enable it per guest that needs systemd credentials. The
+  clearing is an AppArmor-era shim (upstream assumes the credential/sandbox
+  mounts fail without nesting); this host runs no AppArmor, so credentials work
+  fine here. Note it re-enables `LoadCredential` for *every* service that
+  declares it (journald, networkd, resolved, ... - not just mosquitto).
+  Caveat: upstream tried exactly this and reverted it (distrobuilder PR #1003,
+  2026-06, "broke most of our images" - on AppArmor hosts). Our narrower version
+  (drop `LoadCredential=` only, leave `ImportCredential=` cleared) is verified
+  healthy here (0 failed units). Keep it minimal; ideally it belongs upstream
+  (nixpkgs #260670, distrobuilder #985).
+- Container guests set `nix.settings.max-jobs = 0`: they never build, only
+  substitute. Builds run on the host (`task deploy` uses `--build-host`); an
+  in-guest build fails with `local builds are disabled (max-jobs = 0)`.
 - USB Zigbee coordinator passthrough cannot follow an instance across hosts; a
   Zigbee2MQTT workload must be a VM pinned to the board the dongle is plugged
   into (see README "Known risks").

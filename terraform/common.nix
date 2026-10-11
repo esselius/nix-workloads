@@ -9,6 +9,14 @@
     description = "Managed incus bridge that workloads attach to.";
   };
 
+  # Physical uplink the macvlan `eth1` children are created on. Board-specific:
+  # the Pi 5 vendor kernel/DTB names the wired NIC `end0`, not `eth0`.
+  options.local.lanParent = lib.mkOption {
+    type = lib.types.str;
+    default = "end0";
+    description = "Host NIC that LAN-reachable macvlan interfaces are created on.";
+  };
+
   config = {
     terraform.required_providers.incus = {
       source = "lxc/incus";

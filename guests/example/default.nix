@@ -45,10 +45,16 @@
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIoqhLqzuQJEyn/M4WmBkpPlMou2zIXoJUikAcFgvx4C peteresselius@Fox.lan"
   ];
 
-  nix.settings.experimental-features = [
-    "nix-command"
-    "flakes"
-  ];
+  nix.settings = {
+    experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
+    # The guest must never build - builds run on the host (`--build-host`). With
+    # max-jobs = 0 nix only substitutes, so any attempt to build inside the
+    # container fails.
+    max-jobs = 0;
+  };
 
   system.stateVersion = "26.05";
 }

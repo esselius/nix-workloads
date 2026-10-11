@@ -29,10 +29,16 @@ tasks:
     cmds:
       - |
         name="{{index .CLI_ARGS_LIST 0}}"
-        ip="$(incus list "$name" -c 4 --format csv | head -1)"
-        ip="${ip%% *}"
+        # SSH must go through the private backplane, so target eth0's static
+        # address (an instance can also have a LAN macvlan NIC - never deploy
+        # over that). Fall back to incus's first IPv4 if there is no override.
+        ip="$(incus config device get "$name" eth0 ipv4.address 2>/dev/null || true)"
         if [ -z "$ip" ]; then
-          echo "no IPv4 for instance '$name' - is it running?" >&2
+          ip="$(incus list "$name" -c 4 --format csv | head -1 | tr -d '\"')"
+          ip="${ip%% *}"
+        fi
+        if [ -z "$ip" ]; then
+          echo "no private IPv4 for instance '$name' - is it running?" >&2
           exit 1
         fi
         echo "deploying to $name ($ip)"
