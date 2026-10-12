@@ -86,6 +86,14 @@
         owner = "kanidm";
         mode = "0400";
       };
+      node_red_oidc_secret = {
+        owner = "kanidm";
+        mode = "0400";
+      };
+      oauth2_proxy_secret = {
+        owner = "kanidm";
+        mode = "0400";
+      };
     };
   };
 
@@ -124,6 +132,8 @@
       groups = {
         grafana_admins = { };
         grafana_users = { };
+        # Shared "may sign in to homelab apps" group (Node-RED, oauth2-proxy).
+        homelab_users = { };
       };
 
       persons.peter = {
@@ -132,6 +142,7 @@
         groups = [
           "grafana_admins"
           "grafana_users"
+          "homelab_users"
         ];
       };
 
@@ -155,6 +166,35 @@
             grafana_users = [ "Viewer" ];
           };
         };
+      };
+
+      systems.oauth2.node-red = {
+        displayName = "Node-RED";
+        originUrl = "https://node-red.adama.lan/auth/strategy/callback/";
+        originLanding = "https://node-red.adama.lan/";
+        basicSecretFile = config.sops.secrets.node_red_oidc_secret.path;
+        # passport-openidconnect doesn't send a PKCE challenge; Kanidm enforces
+        # it by default.
+        allowInsecureClientDisablePkce = true;
+        scopeMaps.homelab_users = [
+          "openid"
+          "email"
+          "profile"
+          "groups"
+        ];
+      };
+
+      systems.oauth2.oauth2-proxy = {
+        displayName = "Zigbee2MQTT";
+        originUrl = "https://zigbee2mqtt.adama.lan/oauth2/callback";
+        originLanding = "https://zigbee2mqtt.adama.lan/";
+        basicSecretFile = config.sops.secrets.oauth2_proxy_secret.path;
+        scopeMaps.homelab_users = [
+          "openid"
+          "email"
+          "profile"
+          "groups"
+        ];
       };
     };
   };
