@@ -25,7 +25,7 @@
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
       "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "vm_data_size_bytes", "instant": true } ]
+      "targets": [ { "refId": "A", "expr": "vm_data_size_bytes", "instant": true, "legendFormat": "{{type}}" } ]
     },
     {
       "id": 3,
@@ -34,7 +34,7 @@
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
       "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "vm_rows", "instant": true } ]
+      "targets": [ { "refId": "A", "expr": "vm_rows", "instant": true, "legendFormat": "{{type}}" } ]
     },
     {
       "id": 4,

@@ -16,7 +16,7 @@
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
       "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "count(incus_cpu_effective_total)", "instant": true } ]
+      "targets": [ { "refId": "A", "expr": "count(incus_boot_time_seconds)", "instant": true } ]
     },
     {
       "id": 2,
@@ -54,11 +54,11 @@
     {
       "id": 5,
       "type": "stat",
-      "title": "Instances up",
+      "title": "Containers / VMs",
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
       "gridPos": { "h": 5, "w": 5, "x": 19, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "count(incus_uptime_seconds > 0)", "instant": true } ]
+      "targets": [ { "refId": "A", "expr": "count by (type) (incus_boot_time_seconds)", "instant": true, "legendFormat": "{{type}}" } ]
     },
     {
       "id": 6,
