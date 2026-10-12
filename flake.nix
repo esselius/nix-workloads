@@ -78,6 +78,15 @@
             ./guests/monitoring
           ];
         };
+        kanidm = nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          modules = [
+            sops-nix.nixosModules.sops
+            ./modules/lxc-credentials.nix
+            ./modules/monitoring-agent.nix
+            ./guests/kanidm
+          ];
+        };
       };
 
       perSystem =
@@ -96,6 +105,7 @@
             "coredns"
             "step-ca"
             "monitoring"
+            "kanidm"
           ];
 
           tf = pkgs.writeShellApplication {
@@ -171,6 +181,13 @@
                 ./terraform/monitoring
               ];
             };
+            kanidm = {
+              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+              modules = [
+                ./terraform/common.nix
+                ./terraform/kanidm
+              ];
+            };
           };
 
           devShells.default = pkgs.mkShell {
@@ -184,6 +201,8 @@
               pkgs.sops
               pkgs.age
               pkgs.ssh-to-age
+              # Administer the kanidm (idm) workload; Kanidm is CLI-first.
+              pkgs.kanidm_1_11
               tf
             ];
             # sops does not read ~/.ssh/id_ed25519 directly; derive a native age
@@ -219,6 +238,7 @@
                 self.nixosConfigurations.coredns.config.system.build.toplevel
                 self.nixosConfigurations.step-ca.config.system.build.toplevel
                 self.nixosConfigurations.monitoring.config.system.build.toplevel
+                self.nixosConfigurations.kanidm.config.system.build.toplevel
               ];
               terraformConfigs = builtins.attrValues (
                 lib.mapAttrs (_: cfg: cfg.result.terraformConfiguration) config.terranix.terranixConfigurations

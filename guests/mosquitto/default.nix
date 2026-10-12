@@ -18,6 +18,7 @@ let
       hash = "sha256-t+Z+VOCDRgMc53/HFzXcNCfWv5sNLPPN9YniVcsSZXw=";
     };
     vendorHash = "sha256-fdUGkbS0io/xHbv0HLs8hzOT25RCP+dnC8MwT3sowGo=";
+    meta.mainProgram = "mosquitto-exporter";
   };
 in
 {

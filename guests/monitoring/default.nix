@@ -139,6 +139,13 @@ in
         owner = "grafana";
         mode = "0400";
       };
+      # OIDC client secret for the Kanidm "grafana" client (lives in
+      # secrets/kanidm.yaml; Grafana reads it via $__file{}).
+      grafana_oidc_secret = {
+        sopsFile = ../../secrets/kanidm.yaml;
+        owner = "grafana";
+        mode = "0400";
+      };
     };
     # Grafana's provisioning interpolates $NTFY_TOPIC from its environment, so
     # render the topic into an EnvironmentFile for the service (below).
@@ -235,6 +242,26 @@ in
         # Accept the browser's Origin (Grafana otherwise compares it to the
         # proxied request host and rejects queries with "origin not allowed").
         csrf_trusted_origins = "https://monitoring.int.esselius.dev";
+      };
+      # Login via Kanidm (OIDC/passkeys). Roles come from the `grafana_role`
+      # claim that Kanidm builds from group membership. The admin password above
+      # stays as a localhost break-glass.
+      "auth.generic_oauth" = {
+        enabled = true;
+        name = "Kanidm";
+        client_id = "grafana";
+        client_secret = "$__file{${config.sops.secrets.grafana_oidc_secret.path}}";
+        scopes = "openid profile email groups";
+        auth_url = "https://idm.int.esselius.dev/ui/oauth2";
+        token_url = "https://idm.int.esselius.dev/oauth2/token";
+        api_url = "https://idm.int.esselius.dev/oauth2/openid/grafana/userinfo";
+        use_pkce = true;
+        use_refresh_token = true;
+        allow_sign_up = true;
+        login_attribute_path = "preferred_username";
+        groups_attribute_path = "groups";
+        role_attribute_path = "contains(grafana_role[*], 'GrafanaAdmin') && 'GrafanaAdmin' || 'Viewer'";
+        allow_assign_grafana_admin = true;
       };
     };
     provision.datasources.settings = {
@@ -575,6 +602,7 @@ in
     description = "Reformat Grafana alert webhooks into ntfy notifications";
     wantedBy = [ "multi-user.target" ];
     after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
     serviceConfig = {
       ExecStart = "${pkgs.python3}/bin/python3 ${relayScript}";
       EnvironmentFile = config.sops.templates."grafana-ntfy.env".path;

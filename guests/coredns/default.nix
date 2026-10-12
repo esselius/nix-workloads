@@ -22,6 +22,8 @@ let
     coredns = "10.43.0.14";
     mosquitto = "10.43.0.11";
     monitoring = "10.43.0.12";
+    # The Kanidm workload serves `idm.int.esselius.dev` (its origin).
+    idm = "10.43.0.13";
     step-ca = "10.43.0.15";
   };
 
