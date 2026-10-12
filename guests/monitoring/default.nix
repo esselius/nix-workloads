@@ -591,9 +591,9 @@ in
     prometheus.exporter.blackbox "certs" {
       config = "{ modules: { http_2xx: { prober: http, timeout: 5s } } }"
 
-      # Only service certs we issue - not step-ca's own server cert, which is
-      # deliberately short-lived (24h) and auto-rotated, so its expiry is never
-      # actionable and would always trip the rule.
+      // Only service certs we issue - not step-ca's own server cert, which is
+      // deliberately short-lived (24h) and auto-rotated, so its expiry is never
+      // actionable and would always trip the rule.
       target {
         name    = "monitoring"
         address = "https://monitoring.int.esselius.dev"
@@ -603,6 +603,23 @@ in
 
     prometheus.scrape "blackbox" {
       targets    = prometheus.exporter.blackbox.certs.targets
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+  '';
+
+  # Scrape the monitoring stack's own /metrics, so a pipeline problem (ingestion,
+  # storage, query latency) is visible rather than just "alerts stopped".
+  environment.etc."alloy/self.alloy".text = ''
+    prometheus.scrape "victoriametrics" {
+      targets    = [{ __address__ = "127.0.0.1:8428" }]
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+    prometheus.scrape "loki" {
+      targets    = [{ __address__ = "127.0.0.1:3100" }]
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+    prometheus.scrape "grafana" {
+      targets    = [{ __address__ = "127.0.0.1:3000" }]
       forward_to = [prometheus.remote_write.default.receiver]
     }
   '';

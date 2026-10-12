@@ -1,0 +1,121 @@
+{
+  "uid": "monitoring",
+  "title": "Monitoring stack",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "VictoriaMetrics uptime",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "dtdurations" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "vm_app_uptime_seconds", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "VM storage",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "vm_data_size_bytes", "instant": true } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "VM series",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "vm_rows", "instant": true } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Active alerts",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "grafana_alerting_active_alerts", "instant": true } ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Loki streams",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "loki_ingester_memory_streams", "instant": true } ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Grafana memory",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "grafana_process_resident_memory_bytes", "instant": true } ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "VictoriaMetrics queries / s",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(vm_http_requests_total[5m]))" } ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "VictoriaMetrics series",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "vm_rows", "legendFormat": "{{type}}" } ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Loki ingestion",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(loki_distributor_bytes_received_total[5m]))", "legendFormat": "bytes/s" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Loki log lines / s",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(loki_distributor_lines_received_total[5m]))" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Grafana HTTP requests / s",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(grafana_http_request_duration_seconds_count[5m]))" } ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Grafana memory",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "grafana_process_resident_memory_bytes" } ]
+    }
+  ]
+}

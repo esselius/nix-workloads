@@ -1,0 +1,124 @@
+{
+  "uid": "incus",
+  "title": "Incus instances",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Instances",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "count(incus_cpu_effective_total)", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total memory used",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 5, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(incus_memory_MemTotal_bytes - incus_memory_MemAvailable_bytes)", "instant": true } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "OOM kills",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 5, "x": 9, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "sum(increase(incus_memory_OOM_kills_total[24h]))", "instant": true } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Total processes",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(incus_procs_total)", "instant": true } ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Instances up",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "count(incus_uptime_seconds > 0)", "instant": true } ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "CPU (cores)",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum by (name) (rate(incus_cpu_seconds_total[5m]))", "legendFormat": "{{name}}" } ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Memory used",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "incus_memory_MemTotal_bytes - incus_memory_MemAvailable_bytes", "legendFormat": "{{name}}" } ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Memory used %",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "(1 - incus_memory_MemAvailable_bytes / incus_memory_MemTotal_bytes) * 100", "legendFormat": "{{name}}" } ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Disk I/O",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(incus_disk_read_bytes_total[5m])", "legendFormat": "{{name}} read" },
+        { "refId": "B", "expr": "-rate(incus_disk_written_bytes_total[5m])", "legendFormat": "{{name}} write" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Network",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(incus_network_receive_bytes_total[5m])", "legendFormat": "{{name}} rx" },
+        { "refId": "B", "expr": "-rate(incus_network_transmit_bytes_total[5m])", "legendFormat": "{{name}} tx" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Processes",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "incus_procs_total", "legendFormat": "{{name}}" } ]
+    }
+  ]
+}

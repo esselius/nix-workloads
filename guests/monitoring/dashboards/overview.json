@@ -1,0 +1,135 @@
+{
+  "uid": "overview",
+  "title": "Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Hosts up",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "count(up{job=\"integrations/unix\"} == 1)", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Hosts down",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "count(up{job=\"integrations/unix\"} == 0) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Failed units",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "count(node_systemd_unit_state{state=\"failed\"} == 1) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Certs < 14d",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "count((probe_ssl_earliest_cert_expiry - time()) < 1209600) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "MQTT clients",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(broker_clients_connected)", "instant": true } ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Max disk used",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 85 }, { "color": "red", "value": 95 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "max((1 - node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs|ramfs|autofs\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs|ramfs|autofs\"}) * 100)", "instant": true } ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Hosts up",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "up{job=\"integrations/unix\"}", "legendFormat": "{{host}}" } ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Failed systemd units",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "node_systemd_unit_state{state=\"failed\"} == 1", "legendFormat": "{{host}} {{name}}" } ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Disk used",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "(1 - node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs|ramfs|autofs\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs|ramfs|autofs\"}) * 100", "legendFormat": "{{host}} {{mountpoint}}" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Temperature",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "node_thermal_zone_temp", "legendFormat": "{{host}}" } ]
+    }
+  ]
+}
