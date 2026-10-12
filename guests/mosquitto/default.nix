@@ -1,8 +1,25 @@
 {
   modulesPath,
   config,
+  pkgs,
+  lib,
   ...
 }:
+let
+  # sapcc/mosquitto-exporter isn't in nixpkgs, so build it here. It subscribes
+  # to the broker's $SYS/# topics and exposes them as Prometheus metrics.
+  mosquittoExporter = pkgs.buildGoModule rec {
+    pname = "mosquitto-exporter";
+    version = "0.8.0";
+    src = pkgs.fetchFromGitHub {
+      owner = "sapcc";
+      repo = "mosquitto-exporter";
+      rev = "e26806496667e6c2b5b704ee17e2bf01067e419b";
+      hash = "sha256-t+Z+VOCDRgMc53/HFzXcNCfWv5sNLPPN9YniVcsSZXw=";
+    };
+    vendorHash = "sha256-fdUGkbS0io/xHbv0HLs8hzOT25RCP+dnC8MwT3sowGo=";
+  };
+in
 {
   imports = [
     # Same module the upstream NixOS incus image imports - keeps container boot
@@ -80,7 +97,13 @@
       mqtt_hass = { };
       mqtt_nr = { };
       mqtt_p1ib = { };
+      mqtt_exporter = { };
     };
+    # The exporter reads $MQTT_USER/$MQTT_PASS from its environment.
+    templates."mosquitto-exporter.env".content = ''
+      MQTT_USER=exporter
+      MQTT_PASS=${config.sops.placeholder.mqtt_exporter}
+    '';
   };
 
   # The listener is only reachable on the vpn/LAN NICs; the broker itself is
@@ -96,10 +119,38 @@
           hass.passwordFile = config.sops.secrets.mqtt_hass.path;
           nr.passwordFile = config.sops.secrets.mqtt_nr.path;
           p1ib.passwordFile = config.sops.secrets.mqtt_p1ib.path;
+          # The exporter needs $SYS read access (`#` does not match `$SYS`).
+          exporter = {
+            passwordFile = config.sops.secrets.mqtt_exporter.path;
+            acl = [ "$SYS/#" ];
+          };
         };
       }
     ];
   };
+
+  # Broker metrics for the dashboard: the exporter subscribes to $SYS/# on the
+  # local broker and serves Prometheus metrics on loopback; the Alloy agent
+  # scrapes it (extra alloy file) and remote-writes to the monitoring workload.
+  systemd.services.mosquitto-exporter = {
+    description = "Prometheus exporter for Mosquitto";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "mosquitto.service" ];
+    requires = [ "mosquitto.service" ];
+    serviceConfig = {
+      ExecStart = "${lib.getExe mosquittoExporter} --endpoint tcp://127.0.0.1:1883 --bind-address 127.0.0.1:9234";
+      EnvironmentFile = config.sops.templates."mosquitto-exporter.env".path;
+      DynamicUser = true;
+      Restart = "on-failure";
+    };
+  };
+
+  environment.etc."alloy/mosquitto.alloy".text = ''
+    prometheus.scrape "mosquitto" {
+      targets    = [{ __address__ = "127.0.0.1:9234" }]
+      forward_to = [prometheus.relabel.host.receiver]
+    }
+  '';
 
   # SSH only on the private backplane (eth0, incusbr-vpn); on the LAN NIC (eth1)
   # expose just MQTT. No global ports - everything is per-interface.

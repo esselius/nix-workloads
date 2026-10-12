@@ -1,0 +1,104 @@
+{
+  "uid": "broker",
+  "title": "MQTT broker",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Clients connected",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "broker_clients_connected", "legendFormat": "{{host}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Subscriptions",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "broker_subscriptions_count", "legendFormat": "{{host}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Retained messages",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "broker_retained_messages_count", "legendFormat": "{{host}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Broker uptime",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "dtdurations" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "broker_uptime", "legendFormat": "{{host}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Messages / s",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(broker_messages_received[5m])", "legendFormat": "{{host}} received" },
+        { "refId": "B", "expr": "rate(broker_messages_sent[5m])", "legendFormat": "{{host}} sent" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Bytes / s",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(broker_bytes_received[5m])", "legendFormat": "{{host}} received" },
+        { "refId": "B", "expr": "rate(broker_bytes_sent[5m])", "legendFormat": "{{host}} sent" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Dropped publish messages / s",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(broker_publish_messages_dropped[5m])", "legendFormat": "{{host}}" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Connected clients",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "broker_clients_connected", "legendFormat": "{{host}} connected" },
+        { "refId": "B", "expr": "broker_clients_disconnected", "legendFormat": "{{host}} disconnected" }
+      ]
+    }
+  ]
+}
