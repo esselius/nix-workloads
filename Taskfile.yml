@@ -1,8 +1,5 @@
 version: "3"
 
-vars:
-  HOST: rpi5-8gb
-
 tasks:
   up:
     desc: "Create/update a workload's instance. Usage: task up -- <name>"
@@ -24,6 +21,53 @@ tasks:
     cmds:
       - incus file push --uid 0 --gid 0 --mode 600 ~/.ssh/id_ed25519.pub {{index .CLI_ARGS_LIST 0}}/root/.ssh/authorized_keys --create-dirs
 
+  onboard:
+    desc: "Trust a guest's host key for sops and rekey its secret. Usage: task onboard -- <name>"
+    cmds:
+      - |
+        set -e
+        name="{{index .CLI_ARGS_LIST 0}}"
+        # Same address resolution as deploy (eth0 static, then incus fallback).
+        ip="$(incus config device get "$name" eth0 ipv4.address 2>/dev/null || true)"
+        if [ -z "$ip" ]; then
+          ip="$(incus list "$name" -c 4 --format csv | head -1 | tr -d '\"')"
+          ip="${ip%% *}"
+        fi
+        if [ -z "$ip" ]; then
+          echo "no private IPv4 for instance '$name' - is it running?" >&2
+          exit 1
+        fi
+        # ssh-keyscan reads the host key over the network (the base image's sshd
+        # is already up); ssh-to-age turns it into an age recipient.
+        recipient="$(ssh-keyscan -t ed25519 "$ip" 2>/dev/null | ssh-to-age)"
+        if [ -z "$recipient" ]; then
+          echo "could not read the host key from $ip - is sshd up?" >&2
+          exit 1
+        fi
+        echo "$name ($ip) -> $recipient"
+        if grep -qF "$recipient" .sops.yaml; then
+          echo "already trusted in .sops.yaml"
+        else
+          # Insert after the last age recipient, keeping its indentation.
+          awk -v r="$recipient" -v n="$name" '
+            { lines[NR]=$0
+              if ($0 ~ /-[[:space:]]*age1[0-9a-z]+/) {
+                last=NR
+                indent=substr($0,1,match($0,/[^[:space:]]/)-1)
+              }
+            }
+            END { for (i=1;i<=NR;i++) { print lines[i]; if (i==last) printf "%s- %s # %s\n", indent, r, n } }
+          ' .sops.yaml > .sops.yaml.tmp
+          mv .sops.yaml.tmp .sops.yaml
+          echo "added $name to .sops.yaml"
+        fi
+        if [ -f "secrets/$name.yaml" ]; then
+          export SOPS_AGE_KEY_CMD="ssh-to-age -private-key -i $HOME/.ssh/id_ed25519"
+          printf 'y\n' | sops updatekeys "secrets/$name.yaml"
+        else
+          echo "no secrets/$name.yaml - nothing to rekey (recipient recorded for later)"
+        fi
+
   deploy:
     desc: "Deploy a guest's NixOS system. Usage: task deploy -- <name>"
     cmds:
@@ -42,12 +86,35 @@ tasks:
           exit 1
         fi
         echo "deploying to $name ($ip)"
+        # Build locally on the Mac, dispatched to its aarch64-linux
+        # nix.linux-builder remote (/etc/nix/machines), then copy to the
+        # instance. The guest itself never builds (max-jobs = 0).
         NIX_SSHOPTS="-o StrictHostKeyChecking=accept-new" \
           nixos-rebuild switch --flake ".#$name" \
-          --target-host "root@$ip" --build-host "admin@{{.HOST}}"
+          --target-host "root@$ip"
+
+  deploy-all:
+    desc: "Deploy every workload in dependency order. Usage: task deploy-all"
+    cmds:
+      - |
+        set -e
+        # Dependency roots first (names, then the CA); the rest follow. Only the
+        # *ordering* is explicit - the set is derived from terraform/<name>/, so
+        # it can't go stale as workloads land. `example` is a scaffold.
+        roots="coredns step-ca"
+        rest=$(for d in terraform/*/; do
+          n=${d#terraform/}; n=${n%/}
+          case " $roots example " in *" $n "*) ;; *) echo "$n";; esac
+        done)
+        for name in $roots $rest; do
+          start=$(date +%s)
+          echo "==> deploy $name"
+          task deploy -- "$name"
+          echo "    $name: $(( $(date +%s) - start ))s"
+        done
 
   fmt:
-    desc: Format all Nix files
+    desc: "Format all Nix files"
     cmds:
       - nix fmt
 

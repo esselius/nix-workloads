@@ -17,6 +17,13 @@
     description = "Host NIC that LAN-reachable macvlan interfaces are created on.";
   };
 
+  # incus storage pool backing workload data volumes (persistent state).
+  options.local.storagePool = lib.mkOption {
+    type = lib.types.str;
+    default = "default";
+    description = "incus storage pool for workload data volumes.";
+  };
+
   config = {
     terraform.required_providers.incus = {
       source = "lxc/incus";

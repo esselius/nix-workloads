@@ -42,8 +42,9 @@ rebuilt/replaced without taking lights, heating, or MQTT down.
   healthy here (0 failed units). Keep it minimal; ideally it belongs upstream
   (nixpkgs #260670, distrobuilder #985).
 - Container guests set `nix.settings.max-jobs = 0`: they never build, only
-  substitute. Builds run on the host (`task deploy` uses `--build-host`); an
-  in-guest build fails with `local builds are disabled (max-jobs = 0)`.
+  substitute. Builds run on the Mac's `aarch64-linux` `nix.linux-builder`
+  (`task deploy` builds locally and copies to the instance); an in-guest build
+  fails with `local builds are disabled (max-jobs = 0)`.
 - USB Zigbee coordinator passthrough cannot follow an instance across hosts; a
   Zigbee2MQTT workload must be a VM pinned to the board the dongle is plugged
   into (see README "Known risks").

@@ -75,6 +75,24 @@ Caveats: the host cannot reach a macvlan address (use `eth0`), and the guest
 must not install a second default route - give `eth1` no gateway so only the
 connected LAN route is added.
 
+**Internal DNS (`int.esselius.dev`).** A `coredns` workload (`10.43.0.14`) is
+authoritative for `int.esselius.dev` - a zone generated in
+`guests/coredns/default.nix` that gives every workload an `A` record and
+non-HTTP services an `SRV` record (`_mqtt._tcp`, ...). It binds `:53` with
+`systemd-resolved` disabled in the guest (its stub would otherwise occupy the
+port).
+
+The zone is **internal-only** and deliberately **not** delegated from the public
+`esselius.dev` zone: a delegation whose authority is a private address cannot be
+followed by a public/forwarding resolver (it answers `REFUSED` /
+`No Reachable Authority`). Instead the hosts use **split DNS** - a
+systemd-resolved routing domain `~int.esselius.dev` -> `10.43.0.14`, registered
+on the `incusbr-vpn` bridge link via `local.incus.network.vpn.dns`/`dnsDomains`
+in `nix-homelab-hosts`. Only that suffix goes to `coredns`; every other lookup
+stays direct. The router is untouched (the stock RT-BE50 cannot do conditional
+forwarding) and there are no GoDaddy records for the zone. Consequences:
+`int.esselius.dev` resolves only while on the VPN.
+
 **Credentials shim.** LXC's distrobuilder generator writes
 `service.d/zzz-lxc-service.conf`, clearing `LoadCredential=`/`ImportCredential=`
 for **non-nested** containers - an AppArmor-era shim (upstream assumes the
@@ -115,14 +133,13 @@ boot - so onboarding a guest is two-phase:
 
 ```fish
 task up -- mosquitto               # 1. create the instance (layer 2)
-
-# 2. add the guest's host key as a recipient, then rekey:
-ssh admin@rpi5-8gb 'sudo incus exec mosquitto -- cat /etc/ssh/ssh_host_ed25519_key.pub' \
-  | ssh-to-age                     # paste into .sops.yaml
-sops updatekeys secrets/mosquitto.yaml
-
+task onboard -- mosquitto          # 2. trust its host key for sops + rekey
 task deploy -- mosquitto           # 3. deploy (sops-nix can now decrypt)
 ```
+
+`task onboard` reads the guest's host key over the network (`ssh-keyscan -t
+ed25519 <ip> | ssh-to-age`; the base image's sshd is already up), appends it to
+`.sops.yaml`, and runs `sops updatekeys secrets/<name>.yaml`.
 
 Until step 2, `task deploy` fails: sops-nix on the guest cannot decrypt a file
 the guest is not a recipient of. Never commit plaintext secrets.
@@ -148,9 +165,10 @@ the guest is not a recipient of. Never commit plaintext secrets.
 
    and `nixos-rebuild switch` the host. (A one-time join token via the
    provider's `token` field also works, but is not repeatable.)
-3. **SSH access to `rpi5-8gb` as `admin`** - `task deploy` uses it as the
-   `--build-host` (the guest cannot sandbox a build, and the Mac's
-   `aarch64-linux` builder isn't used).
+3. **An `aarch64-linux` builder on the Mac** - `task deploy` builds the guest
+   system locally and copies it to the instance. This repo assumes the nix-darwin
+   `nix.linux-builder` (a remote in `/etc/nix/machines`), so no host is used as a
+   build host.
 
 ## Usage
 
@@ -161,7 +179,9 @@ task plan   -- example             # plan the instance
 task up     -- example             # create/update it (tf apply)
 task down   -- example             # destroy it
 
+task onboard -- example            # trust the guest's host key for sops + rekey
 task deploy -- example             # nixos-rebuild the guest onto it (see Deploy)
+task deploy-all                    # deploy every workload in dependency order
 task fmt                           # nix fmt
 task check                         # nix flake check
 ```
@@ -181,16 +201,16 @@ ownership/mode and trips sshd's `StrictModes`).
 
 `task deploy -- example` looks the instance's address up from incus (`incus list
 example -c 4 --format csv`) and runs `nixos-rebuild switch --flake .#example
---target-host root@<ip> --build-host admin@rpi5-8gb`, with `NIX_SSHOPTS` set to
-accept the guest's host key. It builds on the host (`--build-host`): the
-unprivileged guest has no user namespaces, so Nix cannot sandbox a build inside
-it, and the Mac's `aarch64-linux` builder isn't used for this. The guests set
+--target-host root@<ip>`, with `NIX_SSHOPTS` set to accept the guest's host key.
+The system is built **locally on the Mac**, dispatched to its `aarch64-linux`
+`nix.linux-builder` (a remote in `/etc/nix/machines`), then copied to the
+instance - the guest itself never builds (the unprivileged guest has no user
+namespaces, so Nix cannot sandbox a build inside it anyway). The guests set
 `nix.settings.max-jobs = 0`, so a build attempted inside a container fails
-outright (`local builds are disabled (max-jobs = 0)`) - builds only ever run on
-the host.
+outright (`local builds are disabled (max-jobs = 0)`).
 
 Off the VPN, add a ProxyJump for the guest. Do it in `~/.ssh/config` rather than
-in `NIX_SSHOPTS`, since the latter also applies to the build-host connection:
+in `NIX_SSHOPTS`:
 
 ```
 Host 10.43.0.*

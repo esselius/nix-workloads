@@ -39,6 +39,7 @@
           system = "aarch64-linux";
           modules = [
             ./modules/lxc-credentials.nix
+            ./modules/monitoring-agent.nix
             ./guests/example
           ];
         };
@@ -47,7 +48,34 @@
           modules = [
             sops-nix.nixosModules.sops
             ./modules/lxc-credentials.nix
+            ./modules/monitoring-agent.nix
             ./guests/mosquitto
+          ];
+        };
+        coredns = nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          modules = [
+            ./modules/lxc-credentials.nix
+            ./modules/monitoring-agent.nix
+            ./guests/coredns
+          ];
+        };
+        step-ca = nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          modules = [
+            sops-nix.nixosModules.sops
+            ./modules/lxc-credentials.nix
+            ./modules/monitoring-agent.nix
+            ./guests/step-ca
+          ];
+        };
+        monitoring = nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          modules = [
+            sops-nix.nixosModules.sops
+            ./modules/lxc-credentials.nix
+            ./modules/monitoring-agent.nix
+            ./guests/monitoring
           ];
         };
       };
@@ -65,6 +93,9 @@
           workloads = [
             "example"
             "mosquitto"
+            "coredns"
+            "step-ca"
+            "monitoring"
           ];
 
           tf = pkgs.writeShellApplication {
@@ -119,6 +150,27 @@
                 ./terraform/mosquitto
               ];
             };
+            coredns = {
+              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+              modules = [
+                ./terraform/common.nix
+                ./terraform/coredns
+              ];
+            };
+            step-ca = {
+              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+              modules = [
+                ./terraform/common.nix
+                ./terraform/step-ca
+              ];
+            };
+            monitoring = {
+              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+              modules = [
+                ./terraform/common.nix
+                ./terraform/monitoring
+              ];
+            };
           };
 
           devShells.default = pkgs.mkShell {
@@ -164,6 +216,9 @@
               guestDrvs = [
                 self.nixosConfigurations.example.config.system.build.toplevel
                 self.nixosConfigurations.mosquitto.config.system.build.toplevel
+                self.nixosConfigurations.coredns.config.system.build.toplevel
+                self.nixosConfigurations.step-ca.config.system.build.toplevel
+                self.nixosConfigurations.monitoring.config.system.build.toplevel
               ];
               terraformConfigs = builtins.attrValues (
                 lib.mapAttrs (_: cfg: cfg.result.terraformConfiguration) config.terranix.terranixConfigurations

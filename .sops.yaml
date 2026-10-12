@@ -5,7 +5,10 @@ creation_rules:
           # The Mac's SSH key (ssh-to-age ~/.ssh/id_ed25519.pub) - editing and
           # rekeying from Fox.
           - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av
-          # Each guest's SSH host key, added after first boot:
-          #   ssh admin@rpi5-8gb 'sudo incus exec <name> -- cat /etc/ssh/ssh_host_ed25519_key.pub' | ssh-to-age
-          # then `sops updatekeys secrets/mosquitto.yaml`.
+          # Each guest's SSH host key, added after first boot. Read it over the
+          # network (the guest's sshd is up in the base image) and convert:
+          #   ssh-keyscan -t ed25519 <staticIp> | ssh-to-age
+          # then `sops updatekeys secrets/<name>.yaml`.
           - age1uu8e8wajprpktmtl0v3eve2jyvnznkkvuekrqqpt4f0q9nd04u0ql2uy4y # mosquitto
+          - age1g8dzns3l2h22wfudr3z5c3rq8tuqe52zmemn44thzwcrwdfgdutqzks9da # step-ca
+          - age19h3fpwtpmd3rvhya0nf9pz8me6zhxy6ft3xhcwnyndkyvyqn0y9sc0fxsv # monitoring

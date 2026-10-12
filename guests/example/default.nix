@@ -50,7 +50,7 @@
       "nix-command"
       "flakes"
     ];
-    # The guest must never build - builds run on the host (`--build-host`). With
+    # The guest must never build - builds run on the Mac's linux-builder. With
     # max-jobs = 0 nix only substitutes, so any attempt to build inside the
     # container fails.
     max-jobs = 0;

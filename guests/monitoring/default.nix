@@ -1,0 +1,422 @@
+{
+  modulesPath,
+  config,
+  lib,
+  ...
+}:
+{
+  imports = [
+    # Same module the upstream NixOS incus image imports - keeps container boot
+    # and network wiring intact across `nixos-rebuild switch`.
+    "${modulesPath}/virtualisation/lxc-container.nix"
+  ];
+
+  networking = {
+    hostName = "monitoring";
+    # The incus image configures eth0 with systemd-networkd, not dhcpcd.
+    dhcpcd.enable = false;
+    useDHCP = false;
+    useHostResolvConf = false;
+  };
+
+  systemd.network = {
+    enable = true;
+    networks."50-eth0" = {
+      matchConfig.Name = "eth0";
+      networkConfig = {
+        DHCP = "ipv4";
+        IPv6AcceptRA = true;
+      };
+      linkConfig.RequiredForOnline = "routable";
+    };
+  };
+
+  # lxc-container.nix enables sshd via mkDefault, but state it explicitly so a
+  # deploy can never lock us out. openFirewall adds a global port-22 allow, so
+  # keep it off and open ports per-interface below.
+  services.openssh = {
+    enable = true;
+    openFirewall = false;
+    settings.PermitRootLogin = "prohibit-password";
+  };
+  users.users.root.openssh.authorizedKeys.keys = [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIoqhLqzuQJEyn/M4WmBkpPlMou2zIXoJUikAcFgvx4C peteresselius@Fox.lan"
+  ];
+
+  nix.settings = {
+    experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
+    # The guest must never build - builds run on the Mac's linux-builder. With
+    # max-jobs = 0 nix only substitutes, so any attempt to build inside the
+    # container fails.
+    max-jobs = 0;
+  };
+
+  # Grafana reads both via its file provider (`$__file{}` in the settings below),
+  # so they stay out of the world-readable Nix store. Read by the grafana user.
+  sops = {
+    age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+    defaultSopsFile = ../../secrets/monitoring.yaml;
+    secrets = {
+      grafana_admin_password = {
+        owner = "grafana";
+        mode = "0400";
+      };
+      grafana_secret_key = {
+        owner = "grafana";
+        mode = "0400";
+      };
+      # ntfy.sh alert topic. Its name is the shared secret (free tier has no
+      # reserved topics), so it stays out of the store.
+      ntfy_topic = {
+        owner = "grafana";
+        mode = "0400";
+      };
+    };
+    # Grafana's provisioning interpolates $NTFY_TOPIC from its environment, so
+    # render the topic into an EnvironmentFile for the service (below).
+    templates."grafana-ntfy.env".content = "NTFY_TOPIC=${config.sops.placeholder.ntfy_topic}";
+  };
+
+  # Metrics TSDB. PromQL-compatible, but far lighter than Prometheus on a Pi.
+  # Agents push here via remote_write (`/api/v1/write`); it does not scrape.
+  services.victoriametrics = {
+    enable = true;
+    listenAddress = ":8428";
+    retentionPeriod = "90d";
+    stateDir = "monitoring/victoriametrics";
+  };
+
+  # The module runs VictoriaMetrics with DynamicUser, which relocates
+  # StateDirectory data to /var/lib/private (symlinked back) - bypassing the
+  # /var/lib/monitoring volume. Run it as a static user so the data really lands
+  # on the volume. Also drop PrivateUsers: it needs (nested) user namespaces the
+  # unprivileged container lacks, so the unit would otherwise fail to start.
+  users.users.victoriametrics = {
+    isSystemUser = true;
+    group = "victoriametrics";
+  };
+  users.groups.victoriametrics = { };
+  systemd.services.victoriametrics.serviceConfig = {
+    DynamicUser = lib.mkForce false;
+    User = "victoriametrics";
+    Group = "victoriametrics";
+    PrivateUsers = lib.mkForce false;
+  };
+
+  # Log store. Single binary, filesystem chunks, 30-day retention.
+  services.loki = {
+    enable = true;
+    dataDir = "/var/lib/monitoring/loki";
+    configuration = {
+      auth_enabled = false;
+      server = {
+        http_listen_port = 3100;
+        grpc_listen_port = 9096;
+      };
+      common = {
+        path_prefix = "/var/lib/monitoring/loki";
+        storage.filesystem = {
+          chunks_directory = "/var/lib/monitoring/loki/chunks";
+          rules_directory = "/var/lib/monitoring/loki/rules";
+        };
+        replication_factor = 1;
+        ring = {
+          instance_addr = "127.0.0.1";
+          kvstore.store = "inmemory";
+        };
+      };
+      schema_config.configs = [
+        {
+          from = "2020-10-24";
+          store = "tsdb";
+          object_store = "filesystem";
+          schema = "v13";
+          index = {
+            prefix = "index_";
+            period = "24h";
+          };
+        }
+      ];
+      limits_config.retention_period = "30d";
+      compactor = {
+        working_directory = "/var/lib/monitoring/loki/compactor";
+        retention_enabled = true;
+        delete_request_store = "filesystem";
+      };
+    };
+  };
+
+  # Dashboards + (later) alerting. Admin password and secret key come from sops
+  # via Grafana's file provider; datasources are provisioned so they exist on
+  # first boot. OIDC (Kanidm) replaces the admin login in a later phase.
+  services.grafana = {
+    enable = true;
+    dataDir = "/var/lib/monitoring/grafana";
+    settings = {
+      server = {
+        # Grafana listens on loopback only; nginx terminates TLS and proxies.
+        http_addr = "127.0.0.1";
+        http_port = 3000;
+        domain = "monitoring.int.esselius.dev";
+        root_url = "https://monitoring.int.esselius.dev/";
+      };
+      security = {
+        admin_user = "admin";
+        admin_password = "$__file{${config.sops.secrets.grafana_admin_password.path}}";
+        secret_key = "$__file{${config.sops.secrets.grafana_secret_key.path}}";
+        # Accept the browser's Origin (Grafana otherwise compares it to the
+        # proxied request host and rejects queries with "origin not allowed").
+        csrf_trusted_origins = "https://monitoring.int.esselius.dev";
+      };
+    };
+    provision.datasources.settings = {
+      apiVersion = 1;
+      datasources = [
+        {
+          name = "VictoriaMetrics";
+          uid = "victoriametrics";
+          type = "prometheus";
+          access = "proxy";
+          url = "http://127.0.0.1:8428";
+          isDefault = true;
+        }
+        {
+          name = "Loki";
+          uid = "loki";
+          type = "loki";
+          access = "proxy";
+          url = "http://127.0.0.1:3100";
+        }
+      ];
+      # Grafana won't adopt a new UID for an existing datasource, so drop any
+      # pre-existing ones (matched by name) and let the entries above recreate
+      # them with the fixed UIDs the alert rules reference.
+      deleteDatasources = [
+        {
+          name = "VictoriaMetrics";
+          orgId = 1;
+        }
+        {
+          name = "Loki";
+          orgId = 1;
+        }
+      ];
+    };
+
+    # Alerts -> ntfy.sh. `$NTFY_TOPIC` is interpolated by Grafana's provisioning
+    # from the service environment (sops -> EnvironmentFile, set below), so the
+    # topic never lands in the store. ntfy receives Grafana's webhook JSON body.
+    provision.alerting.contactPoints.settings = {
+      apiVersion = 1;
+      contactPoints = [
+        {
+          orgId = 1;
+          name = "ntfy";
+          receivers = [
+            {
+              uid = "ntfy";
+              type = "webhook";
+              settings = {
+                url = "https://ntfy.sh/$NTFY_TOPIC";
+                httpMethod = "POST";
+              };
+            }
+          ];
+        }
+      ];
+    };
+
+    provision.alerting.policies.settings = {
+      apiVersion = 1;
+      policies = [
+        {
+          orgId = 1;
+          receiver = "ntfy";
+          group_by = [ "alertname" ];
+          group_wait = "30s";
+          group_interval = "5m";
+          repeat_interval = "4h";
+        }
+      ];
+    };
+
+    provision.alerting.rules.settings = {
+      apiVersion = 1;
+      groups = [
+        {
+          orgId = 1;
+          name = "homelab";
+          folder = "Alerts";
+          interval = "1m";
+          rules = [
+            {
+              uid = "node-down";
+              title = "Node down";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 300;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    expr = "up";
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        evaluator = {
+                          type = "lt";
+                          params = [ 1 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              # Agents push; a node that stops reporting pushes nothing, so treat
+              # NoData as down too (otherwise a dead node looks like "no alert").
+              noDataState = "Alerting";
+              execErrState = "Alerting";
+              "for" = "5m";
+              labels.severity = "critical";
+              annotations.summary = "{{ $labels.host }} stopped reporting";
+            }
+            {
+              uid = "disk-space";
+              title = "Disk space low";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 600;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    expr = ''node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs|autofs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs|autofs"}'';
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        evaluator = {
+                          type = "lt";
+                          params = [ 0.15 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              noDataState = "OK";
+              execErrState = "Alerting";
+              "for" = "15m";
+              labels.severity = "warning";
+              annotations.summary = "{{ $labels.host }} {{ $labels.mountpoint }} under 15% free";
+            }
+          ];
+        }
+      ];
+    };
+  };
+
+  # Grafana's provisioning reads $NTFY_TOPIC for the contact point URL.
+  systemd.services.grafana.serviceConfig.EnvironmentFile =
+    config.sops.templates."grafana-ntfy.env".path;
+
+  # `.dev` is HSTS-preloaded, so the Grafana web UI must be HTTPS. Grafana has no
+  # ACME challenge server, so nginx terminates TLS on :443 (and serves the
+  # http-01 challenge on :80), proxying to Grafana on loopback. Certs come from
+  # the internal step-ca and chain to the Esselius Root CA - trusted on the Mac,
+  # and by this guest via certificateFiles below.
+  security.pki.certificateFiles = [ ../../certs/root_ca.crt ];
+
+  security.acme = {
+    acceptTerms = true;
+    defaults = {
+      email = "acme@esselius.dev";
+      server = "https://step-ca.int.esselius.dev:8443/acme/internal/directory";
+    };
+  };
+
+  services.nginx = {
+    enable = true;
+    # Forward Host + X-Forwarded-* so Grafana knows its external origin; without
+    # this it sees Host `127.0.0.1:3000` and rejects the browser's Origin
+    # ("origin not allowed" on datasource queries).
+    recommendedProxySettings = true;
+    virtualHosts."monitoring.int.esselius.dev" = {
+      enableACME = true;
+      forceSSL = true;
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:3000";
+        proxyWebsockets = true;
+      };
+    };
+  };
+
+  # nginx (80 for the ACME challenge, 443 for the UI), VictoriaMetrics (8428)
+  # and Loki (3100) for the Alloy agents, plus SSH - all only on the private
+  # backplane.
+  networking.firewall.interfaces.eth0.allowedTCPPorts = [
+    22
+    80
+    443
+    3100
+    8428
+  ];
+
+  system.stateVersion = "26.05";
+}
