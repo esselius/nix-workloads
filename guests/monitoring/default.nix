@@ -2,8 +2,73 @@
   modulesPath,
   config,
   lib,
+  pkgs,
   ...
 }:
+let
+  # Receives Grafana's webhook JSON and re-publishes it to ntfy in ntfy's own
+  # JSON format, so notifications show a title + message instead of a raw blob.
+  relayScript = pkgs.writeText "grafana-ntfy-relay.py" ''
+    import json
+    import os
+    import sys
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    TOPIC = os.environ["NTFY_TOPIC"]
+
+
+    def notify(title, message, priority):
+        body = json.dumps({
+            "topic": TOPIC,
+            "title": title,
+            "message": message,
+            "priority": priority,
+        }).encode()
+        request = urllib.request.Request(
+            "https://ntfy.sh/",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            urllib.request.urlopen(request, timeout=10)
+        except Exception as exc:
+            print("ntfy publish failed:", exc, file=sys.stderr, flush=True)
+
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                payload = json.loads(raw)
+            except ValueError:
+                payload = {}
+            status = payload.get("status", "firing")
+            alerts = payload.get("alerts", [])
+            alertname = "alert"
+            summaries = []
+            for alert in alerts:
+                labels = alert.get("labels", {})
+                annotations = alert.get("annotations", {})
+                alertname = labels.get("alertname", alertname)
+                summaries.append(
+                    annotations.get("summary") or labels.get("host") or alertname
+                )
+            icon = "\U0001F6A8" if status == "firing" else "\u2705"
+            title = icon + " " + alertname
+            message = "\n".join(summaries) or title
+            notify(title, message, 4 if status == "firing" else 2)
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+
+    HTTPServer(("127.0.0.1", 9123), Handler).serve_forever()
+  '';
+in
 {
   imports = [
     # Same module the upstream NixOS incus image imports - keeps container boot
@@ -235,7 +300,9 @@
               uid = "ntfy";
               type = "webhook";
               settings = {
-                url = "https://ntfy.sh/$NTFY_TOPIC";
+                # Grafana's webhook always sends JSON; the local relay reformats
+                # it into ntfy's native format (see grafana-ntfy-relay below).
+                url = "http://127.0.0.1:9123/";
                 httpMethod = "POST";
               };
             }
@@ -285,7 +352,9 @@
                       uid = "victoriametrics";
                     };
                     editorMode = "code";
-                    expr = "up";
+                    # Scope to the node exporter scrape so the blackbox probe's
+                    # own `up` (host=null) doesn't trip this.
+                    expr = "up{job=\"integrations/unix\"}";
                     instant = true;
                     range = false;
                     refId = "A";
@@ -501,9 +570,18 @@
     };
   };
 
-  # Grafana's provisioning reads $NTFY_TOPIC for the contact point URL.
-  systemd.services.grafana.serviceConfig.EnvironmentFile =
-    config.sops.templates."grafana-ntfy.env".path;
+  # The relay reads the ntfy topic (secret) from this env file.
+  systemd.services.grafana-ntfy-relay = {
+    description = "Reformat Grafana alert webhooks into ntfy notifications";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.python3}/bin/python3 ${relayScript}";
+      EnvironmentFile = config.sops.templates."grafana-ntfy.env".path;
+      DynamicUser = true;
+      Restart = "on-failure";
+    };
+  };
 
   # Blackbox probes for TLS certificate expiry, so a silently-failed renewal is
   # caught long before a 90-day cert runs out. The agent's main config already
@@ -513,14 +591,12 @@
     prometheus.exporter.blackbox "certs" {
       config = "{ modules: { http_2xx: { prober: http, timeout: 5s } } }"
 
+      # Only service certs we issue - not step-ca's own server cert, which is
+      # deliberately short-lived (24h) and auto-rotated, so its expiry is never
+      # actionable and would always trip the rule.
       target {
         name    = "monitoring"
         address = "https://monitoring.int.esselius.dev"
-        module  = "http_2xx"
-      }
-      target {
-        name    = "step-ca"
-        address = "https://step-ca.int.esselius.dev:8443"
         module  = "http_2xx"
       }
     }
