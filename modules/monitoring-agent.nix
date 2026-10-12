@@ -13,8 +13,12 @@ in
   # every guest; the Pi hosts run an equivalent agent from nix-homelab-hosts.
   options.local.monitoring.address = lib.mkOption {
     type = lib.types.str;
-    default = "10.43.0.12";
-    description = "Monitoring workload (VictoriaMetrics + Loki) address.";
+    default = "monitoring.int.esselius.dev";
+    description = ''
+      Monitoring workload (VictoriaMetrics + Loki) host, resolved via the
+      internal split DNS. Using the name (not the pinned 10.43.0.12) means moving
+      the workload only needs the coredns zone updated.
+    '';
   };
 
   config = {
@@ -24,7 +28,11 @@ in
     # change restarts the unit rather than hot-reloading - fine for this).
     environment.etc."alloy/config.alloy".text = ''
       // Node metrics, scraped locally and remote-written to VictoriaMetrics.
-      prometheus.exporter.unix "node" { }
+      // The systemd collector is off by default; enable it for failed-unit
+      // alerting.
+      prometheus.exporter.unix "node" {
+        enable_collectors = ["systemd"]
+      }
 
       prometheus.scrape "node" {
         targets    = prometheus.exporter.unix.node.targets

@@ -206,6 +206,21 @@
       ];
     };
 
+    # Dashboards (JSON files under ./dashboards), loaded on startup.
+    provision.dashboards.settings = {
+      apiVersion = 1;
+      providers = [
+        {
+          name = "default";
+          orgId = 1;
+          folder = "Homelab";
+          type = "file";
+          disableDeletion = false;
+          options.path = ./dashboards;
+        }
+      ];
+    };
+
     # Alerts -> ntfy.sh. `$NTFY_TOPIC` is interpolated by Grafana's provisioning
     # from the service environment (sops -> EnvironmentFile, set below), so the
     # topic never lands in the store. ntfy receives Grafana's webhook JSON body.
@@ -366,6 +381,120 @@
               labels.severity = "warning";
               annotations.summary = "{{ $labels.host }} {{ $labels.mountpoint }} under 15% free";
             }
+            {
+              uid = "cert-expiry";
+              title = "Certificate expiring soon";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 300;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    # Seconds until the probed cert expires (blackbox probe).
+                    expr = "probe_ssl_earliest_cert_expiry - time()";
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        # 1209600s = 14 days.
+                        evaluator = {
+                          type = "lt";
+                          params = [ 1209600 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              noDataState = "OK";
+              execErrState = "Alerting";
+              "for" = "15m";
+              labels.severity = "warning";
+              annotations.summary = "{{ $labels.instance }} cert expires in under 14 days";
+            }
+            {
+              uid = "systemd-failed";
+              title = "Systemd unit failed";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 300;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    expr = "node_systemd_unit_state{state=\"failed\"} == 1";
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        evaluator = {
+                          type = "gt";
+                          params = [ 0 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              noDataState = "OK";
+              execErrState = "Alerting";
+              "for" = "5m";
+              labels.severity = "warning";
+              annotations.summary = "{{ $labels.name }} failed on {{ $labels.host }}";
+            }
           ];
         }
       ];
@@ -375,6 +504,32 @@
   # Grafana's provisioning reads $NTFY_TOPIC for the contact point URL.
   systemd.services.grafana.serviceConfig.EnvironmentFile =
     config.sops.templates."grafana-ntfy.env".path;
+
+  # Blackbox probes for TLS certificate expiry, so a silently-failed renewal is
+  # caught long before a 90-day cert runs out. The agent's main config already
+  # defines prometheus.remote_write.default; this extra file just adds the
+  # exporter + scrape (Alloy loads every /etc/alloy/*.alloy file).
+  environment.etc."alloy/blackbox.alloy".text = ''
+    prometheus.exporter.blackbox "certs" {
+      config = "{ modules: { http_2xx: { prober: http, timeout: 5s } } }"
+
+      target {
+        name    = "monitoring"
+        address = "https://monitoring.int.esselius.dev"
+        module  = "http_2xx"
+      }
+      target {
+        name    = "step-ca"
+        address = "https://step-ca.int.esselius.dev:8443"
+        module  = "http_2xx"
+      }
+    }
+
+    prometheus.scrape "blackbox" {
+      targets    = prometheus.exporter.blackbox.certs.targets
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+  '';
 
   # `.dev` is HSTS-preloaded, so the Grafana web UI must be HTTPS. Grafana has no
   # ACME challenge server, so nginx terminates TLS on :443 (and serves the
