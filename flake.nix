@@ -87,6 +87,15 @@
             ./guests/kanidm
           ];
         };
+        node-red = nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          modules = [
+            sops-nix.nixosModules.sops
+            ./modules/lxc-credentials.nix
+            ./modules/monitoring-agent.nix
+            ./guests/node-red
+          ];
+        };
       };
 
       perSystem =
@@ -106,6 +115,7 @@
             "step-ca"
             "monitoring"
             "kanidm"
+            "node-red"
           ];
 
           tf = pkgs.writeShellApplication {
@@ -188,6 +198,13 @@
                 ./terraform/kanidm
               ];
             };
+            node-red = {
+              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+              modules = [
+                ./terraform/common.nix
+                ./terraform/node-red
+              ];
+            };
           };
 
           devShells.default = pkgs.mkShell {
@@ -239,6 +256,7 @@
                 self.nixosConfigurations.step-ca.config.system.build.toplevel
                 self.nixosConfigurations.monitoring.config.system.build.toplevel
                 self.nixosConfigurations.kanidm.config.system.build.toplevel
+                self.nixosConfigurations.node-red.config.system.build.toplevel
               ];
               terraformConfigs = builtins.attrValues (
                 lib.mapAttrs (_: cfg: cfg.result.terraformConfiguration) config.terranix.terranixConfigurations

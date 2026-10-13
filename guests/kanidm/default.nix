@@ -170,8 +170,8 @@
 
       systems.oauth2.node-red = {
         displayName = "Node-RED";
-        originUrl = "https://node-red.adama.lan/auth/strategy/callback/";
-        originLanding = "https://node-red.adama.lan/";
+        originUrl = "https://node-red.int.esselius.dev/auth/strategy/callback/";
+        originLanding = "https://node-red.int.esselius.dev/";
         basicSecretFile = config.sops.secrets.node_red_oidc_secret.path;
         # passport-openidconnect doesn't send a PKCE challenge; Kanidm enforces
         # it by default.

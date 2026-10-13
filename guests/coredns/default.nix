@@ -25,6 +25,7 @@ let
     # The Kanidm workload serves `idm.int.esselius.dev` (its origin).
     idm = "10.43.0.13";
     step-ca = "10.43.0.15";
+    node-red = "10.43.0.16";
   };
 
   # Non-HTTP service discovery (RFC 2782). Clients that honour SRV can find the
