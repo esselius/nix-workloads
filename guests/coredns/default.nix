@@ -27,6 +27,7 @@ let
     step-ca = "10.43.0.15";
     node-red = "10.43.0.16";
     zigbee2mqtt = "10.43.0.17";
+    home-assistant = "10.43.0.19";
   };
 
   # Non-HTTP service discovery (RFC 2782). Clients that honour SRV can find the

@@ -15,6 +15,13 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Used to build the pysignalr Home Assistant dependency from its
+    # pyproject.toml (see pkgs/pysignalr.nix).
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -105,6 +112,17 @@
             ./guests/zigbee2mqtt
           ];
         };
+        home-assistant = nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          specialArgs = {
+            pyproject-nix-lib = inputs.pyproject-nix.lib;
+          };
+          modules = [
+            ./modules/lxc-credentials.nix
+            ./modules/monitoring-agent.nix
+            ./guests/home-assistant
+          ];
+        };
       };
 
       perSystem =
@@ -126,6 +144,7 @@
             "kanidm"
             "node-red"
             "zigbee2mqtt"
+            "home-assistant"
           ];
 
           tf = pkgs.writeShellApplication {
@@ -222,6 +241,13 @@
                 ./terraform/zigbee2mqtt
               ];
             };
+            home-assistant = {
+              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+              modules = [
+                ./terraform/common.nix
+                ./terraform/home-assistant
+              ];
+            };
           };
 
           devShells.default = pkgs.mkShell {
@@ -275,6 +301,7 @@
                 self.nixosConfigurations.kanidm.config.system.build.toplevel
                 self.nixosConfigurations.node-red.config.system.build.toplevel
                 self.nixosConfigurations.zigbee2mqtt.config.system.build.toplevel
+                self.nixosConfigurations.home-assistant.config.system.build.toplevel
               ];
               terraformConfigs = builtins.attrValues (
                 lib.mapAttrs (_: cfg: cfg.result.terraformConfiguration) config.terranix.terranixConfigurations
