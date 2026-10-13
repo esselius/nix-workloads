@@ -242,17 +242,20 @@ Ordered by the critical path (lights/heating/MQTT first):
 | Node-RED | container | automation flows |
 | PostgreSQL | container | Home Assistant recorder backend |
 | Home Assistant | VM | isolation; recorder -> Postgres |
-| Zigbee2MQTT | **VM** | needs the USB coordinator; see Known risks |
+| Zigbee2MQTT | container | needs the USB coordinator; see Known risks |
 | Prometheus / Grafana | container | monitoring, not critical path |
 | Authentik / nginx / step-ca | container | web auth + TLS front door |
 
 ## Known risks
 
-- **Zigbee coordinator**: USB passthrough is per-host and never migrates with
-  an instance, so Zigbee2MQTT must run on the board the dongle is plugged into
-  (`rpi5-8gb`) and be a VM with a `unix-char` device for
-  `/dev/serial/by-id/<id>`. Until that device is attached, Zigbee2MQTT stays on
-  `adama`.
+- **Zigbee coordinator**: the dongle is physical, so the instance must run on
+  whichever board it is plugged into (`rpi5-8gb`) and never migrates with the
+  instance. It can be a **container**: incus passes the host's `cdc_acm` node
+  with a `unix-char` device (`source=/dev/serial/by-id/<id>`,
+  `path=/dev/ttyACM0`), or follows replugs with a `unix-hotplug` device
+  (`vendorid`/`productid`). Both are container-only device types - a VM would
+  need the whole `usb` device instead. Until the dongle moves, Zigbee2MQTT stays
+  on `adama`.
 - **No cluster**: `rpi5-8gb` and `rpi5-4gb` are standalone incus servers. There
   is no failover; `rpi5-8gb` is a single point of failure exactly like `adama`
   was. This migration removes the *host-rebuild* coupling, not the hardware SPOF.

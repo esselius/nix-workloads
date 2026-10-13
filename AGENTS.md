@@ -45,6 +45,9 @@ rebuilt/replaced without taking lights, heating, or MQTT down.
   substitute. Builds run on the Mac's `aarch64-linux` `nix.linux-builder`
   (`task deploy` builds locally and copies to the instance); an in-guest build
   fails with `local builds are disabled (max-jobs = 0)`.
-- USB Zigbee coordinator passthrough cannot follow an instance across hosts; a
-  Zigbee2MQTT workload must be a VM pinned to the board the dongle is plugged
-  into (see README "Known risks").
+- The USB Zigbee coordinator is physical, so a Zigbee2MQTT workload is pinned to
+  the board the dongle is plugged into (never migrates with the instance). It can
+  be a container: pass the host's `cdc_acm` node with a `unix-char` device
+  (`source=/dev/serial/by-id/<id>`, `path=/dev/ttyACM0`) or follow replugs with
+  `unix-hotplug` (both are container-only device types; a VM needs `usb`). See
+  README "Known risks".
