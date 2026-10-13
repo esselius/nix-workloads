@@ -16,3 +16,5 @@ creation_rules:
           - age1ph0u3sa8n64tgudqjrqhxg0y42u24rmevadjff4hn28y7m09agqq2kf66e # node-red
           - age10c2psrdx0df4v5ydfcku8w6nhw7jk9644x2hf5zyl8uvg9f33avs0fm7p9 # zigbee2mqtt
           - age1t3mph434y7qaruhe79su8fcvmut0hw4evp7hphu4p8n0yw77fcds77txhz # attic
+          - age1n3rxk88s7gp954xwrph5ryz9gygxvnvgtqwhw9tjtpu7m42hyasqzksrv4 # coredns
+          - age1maahwasrhuzq3n4t2v5gxr294x6wk2agh4dce3d9d7djgrptzu8sm6c5nj # home-assistant
