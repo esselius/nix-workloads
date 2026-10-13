@@ -22,12 +22,12 @@ tasks:
       - incus file push --uid 0 --gid 0 --mode 600 ~/.ssh/id_ed25519.pub {{index .CLI_ARGS_LIST 0}}/root/.ssh/authorized_keys --create-dirs
 
   onboard:
-    desc: "Trust a guest's host key for sops and rekey its secret. Usage: task onboard -- <name>"
+    desc: "Trust a guest's host key for sops, rekey its secret, and seed Attic cache trust. Usage: task onboard -- <name>"
     cmds:
       - |
         set -e
         name="{{index .CLI_ARGS_LIST 0}}"
-        # Same address resolution as deploy (eth0 static, then incus fallback).
+
         ip="$(incus config device get "$name" eth0 ipv4.address 2>/dev/null || true)"
         if [ -z "$ip" ]; then
           ip="$(incus list "$name" -c 4 --format csv | head -1 | tr -d '\"')"
@@ -37,18 +37,17 @@ tasks:
           echo "no private IPv4 for instance '$name' - is it running?" >&2
           exit 1
         fi
-        # ssh-keyscan reads the host key over the network (the base image's sshd
-        # is already up); ssh-to-age turns it into an age recipient.
+
         recipient="$(ssh-keyscan -t ed25519 "$ip" 2>/dev/null | ssh-to-age)"
         if [ -z "$recipient" ]; then
           echo "could not read the host key from $ip - is sshd up?" >&2
           exit 1
         fi
         echo "$name ($ip) -> $recipient"
+
         if grep -qF "$recipient" .sops.yaml; then
           echo "already trusted in .sops.yaml"
         else
-          # Insert after the last age recipient, keeping its indentation.
           awk -v r="$recipient" -v n="$name" '
             { lines[NR]=$0
               if ($0 ~ /-[[:space:]]*age1[0-9a-z]+/) {
@@ -61,21 +60,39 @@ tasks:
           mv .sops.yaml.tmp .sops.yaml
           echo "added $name to .sops.yaml"
         fi
+
         if [ -f "secrets/$name.yaml" ]; then
           export SOPS_AGE_KEY_CMD="ssh-to-age -private-key -i $HOME/.ssh/id_ed25519"
           printf 'y\n' | sops updatekeys "secrets/$name.yaml"
-        else
-          echo "no secrets/$name.yaml - nothing to rekey (recipient recorded for later)"
         fi
+
+        substituter="$(nix eval --raw ".#nixosConfigurations.$name.config.nix.settings.extra-substituters" --apply 'builtins.concatStringsSep " "')"
+        cachekey="$(nix eval --raw ".#nixosConfigurations.$name.config.nix.settings.extra-trusted-public-keys" --apply 'builtins.concatStringsSep " "')"
+        incus file push --create-dirs --uid 0 --gid 0 --mode 644 certs/root_ca.crt "$name/etc/nix/internal-root-ca.crt"
+        incus exec "$name" -- sh -ec '
+          export PATH=/run/current-system/sw/bin:/run/wrappers/bin:$PATH
+          f=/etc/nix/nix.conf
+          if [ -L "$f" ]; then
+            target="$(readlink -f "$f")"
+            rm -f "$f"
+            cp "$target" "$f"
+          fi
+          bundle=/etc/ssl/certs/ca-certificates.crt
+          [ -e "$bundle" ] || bundle=/etc/ssl/certs/ca-bundle.crt
+          cat "$bundle" /etc/nix/internal-root-ca.crt > /etc/nix/ssl-cert-file.pem
+          if ! grep -q "nix-workloads cache seed" "$f"; then
+            printf "\n# nix-workloads cache seed\nextra-substituters = %s\nextra-trusted-public-keys = %s\nssl-cert-file = /etc/nix/ssl-cert-file.pem\n" "$1" "$2" >> "$f"
+          fi
+          systemctl restart nix-daemon
+        ' sh "$substituter" "$cachekey"
 
   deploy:
     desc: "Deploy a guest's NixOS system. Usage: task deploy -- <name>"
     cmds:
       - |
+        set -e
         name="{{index .CLI_ARGS_LIST 0}}"
-        # SSH must go through the private backplane, so target eth0's static
-        # address (an instance can also have a LAN macvlan NIC - never deploy
-        # over that). Fall back to incus's first IPv4 if there is no override.
+
         ip="$(incus config device get "$name" eth0 ipv4.address 2>/dev/null || true)"
         if [ -z "$ip" ]; then
           ip="$(incus list "$name" -c 4 --format csv | head -1 | tr -d '\"')"
@@ -86,14 +103,32 @@ tasks:
           exit 1
         fi
         echo "deploying to $name ($ip)"
-        # Build locally on the Mac, dispatched to its aarch64-linux
-        # nix.linux-builder remote (/etc/nix/machines), then hand the system to
-        # the instance. The guest itself never builds (max-jobs = 0).
-        #
-        # --use-substitutes tells nixos-rebuild to let the *target* substitute
-        # missing paths from its own substituters (the Attic cache) instead of
-        # receiving them over SSH - so the closure travels cache -> target, not
-        # Mac -> target. Push the closure first with `task cache-push -- <name>`.
+
+        ca="${TMPDIR:-/tmp}/nix-workloads-ca-bundle.crt"
+        base="$(nix config show ssl-cert-file 2>/dev/null || true)"
+        if [ -z "$base" ] || [ ! -e "$base" ]; then base=/etc/ssl/certs/ca-certificates.crt; fi
+        cat "$base" certs/root_ca.crt > "$ca"
+
+        system="$(nix build ".#nixosConfigurations.$name.config.system.build.toplevel" --no-link --print-out-paths --option ssl-cert-file "$ca" --option narinfo-cache-negative-ttl 0)"
+
+        # attic/step-ca/coredns bootstrap the cache, so a miss there may still copy.
+        case " attic step-ca coredns " in
+          *" $name "*)
+            echo "bootstrap workload: a cache miss may copy"
+            ;;
+          *)
+            if ! ssh -o StrictHostKeyChecking=accept-new "root@$ip" \
+              nix-store --realise "$system" \
+              --option download-attempts 1 --option connect-timeout 5 \
+              --option narinfo-cache-negative-ttl 0; then
+              echo "error: $name cannot substitute its closure from the cache." >&2
+              echo "       run 'task cache-push -- $name' first" >&2
+              exit 1
+            fi
+            ;;
+        esac
+
+        NIX_CONFIG="ssl-cert-file = $ca" \
         NIX_SSHOPTS="-o StrictHostKeyChecking=accept-new" \
           nixos-rebuild switch --flake ".#$name" \
           --target-host "root@$ip" --use-substitutes
@@ -103,10 +138,13 @@ tasks:
     cmds:
       - |
         name="{{index .CLI_ARGS_LIST 0}}"
-        # Only the deployable closure is pushed (not every intermediate the
-        # builder produced) - see the README's build-cache section. `attic push`
-        # walks the closure and skips paths already on cache.nixos.org.
-        system="$(nix build ".#nixosConfigurations.$name.config.system.build.toplevel" --no-link --print-out-paths)"
+
+        ca="${TMPDIR:-/tmp}/nix-workloads-ca-bundle.crt"
+        base="$(nix config show ssl-cert-file 2>/dev/null || true)"
+        if [ -z "$base" ] || [ ! -e "$base" ]; then base=/etc/ssl/certs/ca-certificates.crt; fi
+        cat "$base" certs/root_ca.crt > "$ca"
+
+        system="$(nix build ".#nixosConfigurations.$name.config.system.build.toplevel" --no-link --print-out-paths --option ssl-cert-file "$ca" --option narinfo-cache-negative-ttl 0)"
         echo "pushing $name ($system) to the cache"
         attic push "${CACHE:-homelab}" "$system"
 
@@ -115,9 +153,6 @@ tasks:
     cmds:
       - |
         set -e
-        # Dependency roots first (names, then the CA); the rest follow. Only the
-        # *ordering* is explicit - the set is derived from terraform/<name>/, so
-        # it can't go stale as workloads land. `example` is a scaffold.
         roots="coredns step-ca"
         rest=$(for d in terraform/*/; do
           n=${d#terraform/}; n=${n%/}
@@ -135,9 +170,6 @@ tasks:
     cmds:
       - |
         set -e
-        # Dependency roots first (names, then the CA); the rest follow. Only the
-        # *ordering* is explicit - the set is derived from terraform/<name>/, so
-        # it can't go stale as workloads land. `example` is a scaffold, skipped.
         roots="coredns step-ca"
         rest=$(for d in terraform/*/; do
           n=${d#terraform/}; n=${n%/}
@@ -150,10 +182,7 @@ tasks:
           echo "==> $name: onboard"
           task onboard -- "$name"
           echo "==> $name: cache-push"
-          # Best-effort: the cache needs its one-time bootstrap (attic login).
-          # If it fails, deploy still works - the guest just receives a copy.
-          task cache-push -- "$name" \
-            || echo "    cache-push failed for $name - continuing (deploy will copy)"
+          task cache-push -- "$name" || echo "    cache-push failed for $name"
           echo "==> $name: deploy"
           task deploy -- "$name"
           echo "    $name: $(( $(date +%s) - start ))s"
@@ -172,7 +201,6 @@ tasks:
         if [ -z "$name" ]; then
           nix flake check
         else
-          # One workload only - the inner dev loop. Skips the other guests.
           system="$(nix eval --raw --impure --expr builtins.currentSystem)"
           nix build ".#checks.${system}.${name}"
         fi

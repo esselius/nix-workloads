@@ -133,8 +133,9 @@ boot - so onboarding a guest is two-phase:
 
 ```fish
 task up -- mosquitto               # 1. create the instance (layer 2)
-task onboard -- mosquitto          # 2. trust its host key for sops + rekey
-task deploy -- mosquitto           # 3. deploy (sops-nix can now decrypt)
+task onboard -- mosquitto          # 2. trust its host key for sops + seed cache trust
+task cache-push -- mosquitto       # 3. push its closure to the Attic cache
+task deploy -- mosquitto           # 4. deploy (substitutes from the cache)
 ```
 
 `task onboard` reads the guest's host key over the network (`ssh-keyscan -t
@@ -179,7 +180,7 @@ task plan   -- example             # plan the instance
 task up     -- example             # create/update it (tf apply)
 task down   -- example             # destroy it
 
-task onboard -- example            # trust the guest's host key for sops + rekey
+task onboard -- example            # trust host key for sops + seed cache trust
 task cache-push -- example         # push the guest's closure to the Attic cache
 task deploy -- example             # nixos-rebuild the guest onto it (see Deploy)
 task deploy-all                    # deploy every workload in dependency order
@@ -203,16 +204,27 @@ key-injection path; the flags matter, or the push copies the Mac's source
 ownership/mode and trips sshd's `StrictModes`).
 
 `task deploy -- example` looks the instance's address up from incus (`incus list
-example -c 4 --format csv`) and runs `nixos-rebuild switch --flake .#example
---target-host root@<ip> --use-substitutes`, with `NIX_SSHOPTS` set to accept the
-guest's host key. The system is built **locally on the Mac**, dispatched to its
-`aarch64-linux` `nix.linux-builder` (a remote in `/etc/nix/machines`), and handed
-to the instance: `--use-substitutes` lets the guest pull the closure from its
-substituters (the Attic cache, see below) instead of receiving it over SSH. The
-guest itself never builds (the unprivileged guest has no user namespaces, so Nix
-cannot sandbox a build inside it anyway); it sets `nix.settings.max-jobs = 0`, so
-a build attempted inside a container fails outright (`local builds are disabled
-(max-jobs = 0)`).
+example -c 4 --format csv`), builds the toplevel **locally on the Mac**
+(dispatched to its `aarch64-linux` `nix.linux-builder`, a remote in
+`/etc/nix/machines`), then hands it to the instance.
+
+Deploy is **substitution-only**: before switching it runs `nix-store --realise
+<toplevel>` on the target, so the target must pull the whole closure from its
+substituters (the Attic cache, see below). The guest sets `nix.settings.max-jobs
+= 0` (the unprivileged guest has no user namespaces, so Nix cannot sandbox a
+build inside it anyway), so it can *only* substitute - a cache miss is a hard
+error, never a builder -> target copy. Run `task cache-push -- <name>` first.
+`nixos-rebuild switch` then switches, with the copy step transferring nothing.
+
+The exception is the bootstrap roots (`attic`, `step-ca`, `coredns`): `attic` is
+the cache itself, and the roots are deployed before it exists, so those may fall
+back to a copy on a cache miss. Every other workload refuses to.
+
+The stock `images:nixos/26.05` base image trusts no internal CA and does not know
+the cache, so `task onboard` also seeds it (a cert plus a few `/etc/nix/nix.conf`
+lines) - that is what lets the **first** deploy substitute rather than copy. A
+guest deployed *before* the CA fix (its running system cannot verify the cache)
+must be re-onboarded once - `task onboard -- <name>` - before a strict deploy.
 
 Off the VPN, add a ProxyJump for the guest. Do it in `~/.ssh/config` rather than
 in `NIX_SSHOPTS`:
@@ -243,9 +255,17 @@ builder ──build──▶ task cache-push ──▶ cache ──substitute─
   workload's *system closure* (`attic push` walks references and skips paths
   already on `cache.nixos.org`). The builder's intermediates stay on the builder,
   so the cache holds distribution artifacts - not everything ever compiled.
-- **Pull on the target.** `task deploy` passes `--use-substitutes`, so the target
-  substitutes the closure from the cache instead of receiving it over SSH; the
-  Mac's uplink is out of the path.
+- **Pull on the target, or fail.** `task deploy` makes the target realise the
+  closure from the cache *before* switching, so the closure travels cache ->
+  target and the Mac's uplink is out of the path. A path the cache cannot serve
+  aborts the deploy - it is never copied from the builder. (The bootstrap roots
+  `attic`/`step-ca`/`coredns` are the only exception; see Deploy.)
+- **Trust.** The cache is HTTPS with a step-ca cert, so every guest trusts the
+  internal CA through `modules/nix-cache.nix`, and `task onboard` seeds the same
+  trust into the stock base image so the first switch substitutes too. `deploy`
+  and `cache-push` build a CA bundle (the orchestrator's trust store plus
+  `certs/root_ca.crt`) and pass it to nix, so the orchestrator's own nix also
+  substitutes from the cache instead of rebuilding locally.
 
 ### One-time bootstrap
 
@@ -319,8 +339,9 @@ paths stay hot.
    add it to `guestMeta` in `flake.nix`. Otherwise nothing to register: both
    `nixosConfigurations` and `terranixConfigurations` are derived from the
    `guests/` directory.
-3. `task check -- <name>`, then `task up -- <name>` and
-   `task deploy -- <name>`.
+3. `task check -- <name>`, then `task up -- <name>`, `task onboard -- <name>`,
+   `task cache-push -- <name>` and `task deploy -- <name>` (deploy substitutes,
+   so the push must succeed first).
 
 ## Migration plan (from `adama`)
 
