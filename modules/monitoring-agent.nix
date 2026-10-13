@@ -47,6 +47,15 @@ in
           target_label = "host"
           replacement  = "${hostName}"
         }
+
+        // The node exporter stamps the same job="integrations/unix" on hosts
+        // and guests, so a guest's node_* series otherwise look like a physical
+        // node. Mark them container-origin; the physical-node dashboards filter
+        // these out with node_type!="container".
+        rule {
+          target_label = "node_type"
+          replacement  = "container"
+        }
       }
 
       prometheus.remote_write "default" {
