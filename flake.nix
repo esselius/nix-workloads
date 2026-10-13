@@ -33,6 +33,35 @@
       sops-nix,
       ...
     }:
+    let
+      lib = nixpkgs.lib;
+
+      # Single source of truth: every workload is a sibling directory under
+      # guests/ (mirrored by terraform/<name>/). Adding a workload means
+      # creating those two directories - there is no list to keep in sync here,
+      # in the terranix configs, in nixosConfigurations, or in the checks.
+      workloads = builtins.attrNames (
+        lib.filterAttrs (_: type: type == "directory") (builtins.readDir ./guests)
+      );
+
+      # The only per-guest deviations from the common shape. Anything not listed
+      # imports sops-nix and takes no extra specialArgs.
+      guestMeta = {
+        example = {
+          sops = false;
+        };
+        coredns = {
+          sops = false;
+        };
+        home-assistant = {
+          sops = false;
+          specialArgs = {
+            pyproject-nix-lib = inputs.pyproject-nix.lib;
+          };
+        };
+      };
+      metaFor = name: guestMeta.${name} or { sops = true; };
+    in
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [ terranix.flakeModule ];
 
@@ -41,89 +70,22 @@
         "aarch64-linux"
       ];
 
-      flake.nixosConfigurations = {
-        example = nixpkgs.lib.nixosSystem {
+      flake.nixosConfigurations = lib.genAttrs workloads (
+        name:
+        let
+          meta = metaFor name;
+        in
+        nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
-          modules = [
+          specialArgs = meta.specialArgs or { };
+          modules = lib.optionals (meta.sops or true) [ sops-nix.nixosModules.sops ] ++ [
             ./modules/lxc-credentials.nix
             ./modules/monitoring-agent.nix
-            ./guests/example
+            ./modules/nix-cache.nix
+            ./guests/${name}
           ];
-        };
-        mosquitto = nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          modules = [
-            sops-nix.nixosModules.sops
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./guests/mosquitto
-          ];
-        };
-        coredns = nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          modules = [
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./guests/coredns
-          ];
-        };
-        step-ca = nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          modules = [
-            sops-nix.nixosModules.sops
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./guests/step-ca
-          ];
-        };
-        monitoring = nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          modules = [
-            sops-nix.nixosModules.sops
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./guests/monitoring
-          ];
-        };
-        kanidm = nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          modules = [
-            sops-nix.nixosModules.sops
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./guests/kanidm
-          ];
-        };
-        node-red = nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          modules = [
-            sops-nix.nixosModules.sops
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./guests/node-red
-          ];
-        };
-        zigbee2mqtt = nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          modules = [
-            sops-nix.nixosModules.sops
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./guests/zigbee2mqtt
-          ];
-        };
-        home-assistant = nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          specialArgs = {
-            pyproject-nix-lib = inputs.pyproject-nix.lib;
-          };
-          modules = [
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./guests/home-assistant
-          ];
-        };
-      };
+        }
+      );
 
       perSystem =
         {
@@ -133,20 +95,6 @@
           ...
         }:
         let
-          # Workloads are sibling directories under terraform/; each becomes a
-          # terranix configuration named after the directory.
-          workloads = [
-            "example"
-            "mosquitto"
-            "coredns"
-            "step-ca"
-            "monitoring"
-            "kanidm"
-            "node-red"
-            "zigbee2mqtt"
-            "home-assistant"
-          ];
-
           tf = pkgs.writeShellApplication {
             name = "tf";
             runtimeInputs = [
@@ -182,73 +130,33 @@
               esac
             '';
           };
+
+          # One check per workload, so the inner loop can evaluate a single
+          # guest (`task check -- <name>`) instead of every workload. Each
+          # forces this guest's toplevel and its terranix config (eval, not
+          # build): it fails if either stops evaluating.
+          evalChecks = lib.genAttrs workloads (
+            name:
+            builtins.deepSeq
+              [
+                self.nixosConfigurations.${name}.config.system.build.toplevel.drvPath
+                config.terranix.terranixConfigurations.${name}.result.terraformConfiguration.drvPath
+              ]
+              (
+                pkgs.runCommand "eval-${name}" { } ''
+                  touch $out
+                ''
+              )
+          );
         in
         {
-          terranix.terranixConfigurations = {
-            example = {
-              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-              modules = [
-                ./terraform/common.nix
-                ./terraform/example
-              ];
-            };
-            mosquitto = {
-              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-              modules = [
-                ./terraform/common.nix
-                ./terraform/mosquitto
-              ];
-            };
-            coredns = {
-              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-              modules = [
-                ./terraform/common.nix
-                ./terraform/coredns
-              ];
-            };
-            step-ca = {
-              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-              modules = [
-                ./terraform/common.nix
-                ./terraform/step-ca
-              ];
-            };
-            monitoring = {
-              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-              modules = [
-                ./terraform/common.nix
-                ./terraform/monitoring
-              ];
-            };
-            kanidm = {
-              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-              modules = [
-                ./terraform/common.nix
-                ./terraform/kanidm
-              ];
-            };
-            node-red = {
-              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-              modules = [
-                ./terraform/common.nix
-                ./terraform/node-red
-              ];
-            };
-            zigbee2mqtt = {
-              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-              modules = [
-                ./terraform/common.nix
-                ./terraform/zigbee2mqtt
-              ];
-            };
-            home-assistant = {
-              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-              modules = [
-                ./terraform/common.nix
-                ./terraform/home-assistant
-              ];
-            };
-          };
+          terranix.terranixConfigurations = lib.genAttrs workloads (name: {
+            terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+            modules = [
+              ./terraform/common.nix
+              ./terraform/${name}
+            ];
+          });
 
           devShells.default = pkgs.mkShell {
             packages = [
@@ -263,6 +171,8 @@
               pkgs.ssh-to-age
               # Administer the kanidm (idm) workload; Kanidm is CLI-first.
               pkgs.kanidm_1_11
+              # Push closures to the Attic cache workload (`task cache-push`).
+              pkgs.attic-client
               tf
             ];
             # sops does not read ~/.ssh/id_ed25519 directly; derive a native age
@@ -287,51 +197,32 @@
             '';
           };
 
-          checks =
-            let
-              # Eval does not require the target platform, so a Darwin
-              # `nix flake check` can still prove the aarch64-linux guest
-              # systems evaluate.
-              guestDrvs = [
-                self.nixosConfigurations.example.config.system.build.toplevel
-                self.nixosConfigurations.mosquitto.config.system.build.toplevel
-                self.nixosConfigurations.coredns.config.system.build.toplevel
-                self.nixosConfigurations.step-ca.config.system.build.toplevel
-                self.nixosConfigurations.monitoring.config.system.build.toplevel
-                self.nixosConfigurations.kanidm.config.system.build.toplevel
-                self.nixosConfigurations.node-red.config.system.build.toplevel
-                self.nixosConfigurations.zigbee2mqtt.config.system.build.toplevel
-                self.nixosConfigurations.home-assistant.config.system.build.toplevel
-              ];
-              terraformConfigs = builtins.attrValues (
-                lib.mapAttrs (_: cfg: cfg.result.terraformConfiguration) config.terranix.terranixConfigurations
-              );
-            in
-            {
-              # Force evaluation of every guest toplevel and terranix config
-              # (eval, not build): fails here if anything stops evaluating.
-              eval-all = builtins.deepSeq (map (d: d.drvPath) (guestDrvs ++ terraformConfigs)) (
-                pkgs.runCommand "eval-all" { } ''
-                  touch $out
-                ''
-              );
+          checks = evalChecks // {
+            # Aggregate, so `nix flake check` / `task check` still covers every
+            # workload. It just builds the per-workload checks.
+            eval-all = pkgs.linkFarm "eval-all" (
+              map (name: {
+                name = name;
+                path = evalChecks.${name};
+              }) workloads
+            );
 
-              # Formatting gate, matching `nix fmt`.
-              fmt =
-                pkgs.runCommand "fmt-check"
-                  {
-                    nativeBuildInputs = [
-                      pkgs.fd
-                      pkgs.nixfmt
-                    ];
-                    src = self;
-                  }
-                  ''
-                    cd "$src"
-                    fd --extension nix --exec nixfmt --check {}
-                    touch $out
-                  '';
-            };
+            # Formatting gate, matching `nix fmt`.
+            fmt =
+              pkgs.runCommand "fmt-check"
+                {
+                  nativeBuildInputs = [
+                    pkgs.fd
+                    pkgs.nixfmt
+                  ];
+                  src = self;
+                }
+                ''
+                  cd "$src"
+                  fd --extension nix --exec nixfmt --check {}
+                  touch $out
+                '';
+          };
         };
     };
 }

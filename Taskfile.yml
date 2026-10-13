@@ -119,6 +119,14 @@ tasks:
       - nix fmt
 
   check:
-    desc: Evaluate every guest system and terranix config
+    desc: "Evaluate every guest + terranix config (or one: task check -- <name>)"
     cmds:
-      - nix flake check
+      - |
+        name="{{.CLI_ARGS}}"
+        if [ -z "$name" ]; then
+          nix flake check
+        else
+          # One workload only - the inner dev loop. Skips the other guests.
+          system="$(nix eval --raw --impure --expr builtins.currentSystem)"
+          nix build ".#checks.${system}.${name}"
+        fi

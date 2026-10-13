@@ -183,7 +183,8 @@ task onboard -- example            # trust the guest's host key for sops + rekey
 task deploy -- example             # nixos-rebuild the guest onto it (see Deploy)
 task deploy-all                    # deploy every workload in dependency order
 task fmt                           # nix fmt
-task check                         # nix flake check
+task check                         # nix flake check (every workload)
+task check -- mosquitto            # evaluate one workload only (fast inner loop)
 ```
 
 `task <task> -- <args>` forwards args to the wrapped command. `up`/`down`/`plan`
@@ -226,11 +227,13 @@ in `guests/example/default.nix`, so later rebuilds only need
 
 1. `cp -r terraform/example terraform/<name>`, rename the resource, and set a
    unique `staticIp` (`10.43.0.x`).
-2. Register it in `flake.nix` under `terranix.terranixConfigurations` (and add
-   it to the `workloads` list used by the `tf` wrapper).
-3. `cp -r guests/example guests/<name>`, set `networking.hostName`, and add the
-   system to `flake.nixosConfigurations`.
-4. `task check`, then `task up -- <name>` and `task deploy -- <name> <staticIp>`.
+2. `cp -r guests/example guests/<name>`, set `networking.hostName`, and, if the
+   guest needs a deviation from the common shape (no sops, extra `specialArgs`),
+   add it to `guestMeta` in `flake.nix`. Otherwise nothing to register: both
+   `nixosConfigurations` and `terranixConfigurations` are derived from the
+   `guests/` directory.
+3. `task check -- <name>`, then `task up -- <name>` and
+   `task deploy -- <name>`.
 
 ## Migration plan (from `adama`)
 
