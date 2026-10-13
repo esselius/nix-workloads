@@ -246,6 +246,25 @@ Ordered by the critical path (lights/heating/MQTT first):
 | Prometheus / Grafana | container | monitoring, not critical path |
 | Authentik / nginx / step-ca | container | web auth + TLS front door |
 
+## Pending cutover: Zigbee2MQTT
+
+The `zigbee2mqtt` workload is scaffolded and deployed, but idles
+(`ConditionPathExists=/dev/ttyACM0`) until the USB coordinator is physically
+moved from `adama` to `rpi5-8gb`. Remaining steps:
+
+1. Move the SONOFF ZBDongle-E from `adama` to `rpi5-8gb`; the `unix-hotplug`
+   device (`1a86:55d4`) surfaces it as `/dev/ttyACM0`.
+2. `systemctl restart zigbee2mqtt` (or `task deploy -- zigbee2mqtt`) to start it.
+3. Copy z2m state from `adama` (`/var/lib/zigbee2mqtt`: `database.db` + the
+   coordinator backup) into the `zigbee2mqtt-data` volume so device names and
+   pairings survive (the network key is already in sops).
+4. Verify devices report on `zigbee2mqtt.int.esselius.dev`, then stop `adama`'s
+   zigbee2mqtt and remove its vhost, DNS entry and secret.
+
+Note: the Kanidm `oauth2-proxy` client now points at
+`zigbee2mqtt.int.esselius.dev`, so `adama`'s z2m *frontend login* is broken
+until the cutover - the daemon keeps running and automations are unaffected.
+
 ## Known risks
 
 - **Zigbee coordinator**: the dongle is physical, so the instance must run on
