@@ -26,6 +26,7 @@ let
     idm = "10.43.0.13";
     step-ca = "10.43.0.15";
     node-red = "10.43.0.16";
+    zigbee2mqtt = "10.43.0.17";
   };
 
   # Non-HTTP service discovery (RFC 2782). Clients that honour SRV can find the
