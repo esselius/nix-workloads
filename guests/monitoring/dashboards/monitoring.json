@@ -30,7 +30,7 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "VM series",
+      "title": "VM datapoints",
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
       "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
@@ -75,7 +75,7 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "VictoriaMetrics series",
+      "title": "VictoriaMetrics datapoints",
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },

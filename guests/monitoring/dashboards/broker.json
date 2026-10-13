@@ -91,7 +91,7 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Connected clients",
+      "title": "Client connections",
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
