@@ -248,13 +248,15 @@ Ordered by the critical path (lights/heating/MQTT first):
 
 ## Pending cutover: Zigbee2MQTT
 
-The `zigbee2mqtt` workload is scaffolded and deployed, but idles
-(`ConditionPathExists=/dev/ttyACM0`) until the USB coordinator is physically
-moved from `adama` to `rpi5-8gb`. Remaining steps:
+The `zigbee2mqtt` workload is scaffolded and deployed, but its unit is
+**disabled** (`wantedBy = [ ]`) and gated on `ConditionPathExists=/dev/ttyACM0`
+until the USB coordinator is physically moved from `adama` to `rpi5-8gb`.
+Remaining steps:
 
 1. Move the SONOFF ZBDongle-E from `adama` to `rpi5-8gb`; the `unix-hotplug`
    device (`1a86:55d4`) surfaces it as `/dev/ttyACM0`.
-2. `systemctl restart zigbee2mqtt` (or `task deploy -- zigbee2mqtt`) to start it.
+2. `systemctl start zigbee2mqtt` to start it (it's disabled at boot for now -
+   remove the `wantedBy` override in `guests/zigbee2mqtt` to re-enable).
 3. Copy z2m state from `adama` (`/var/lib/zigbee2mqtt`: `database.db` + the
    coordinator backup) into the `zigbee2mqtt-data` volume so device names and
    pairings survive (the network key is already in sops).
