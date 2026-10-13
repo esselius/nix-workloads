@@ -241,7 +241,7 @@ Ordered by the critical path (lights/heating/MQTT first):
 | Mosquitto (MQTT) | container | broker everything else depends on |
 | Node-RED | container | automation flows |
 | PostgreSQL | container | Home Assistant recorder backend |
-| Home Assistant | VM | isolation; recorder -> Postgres |
+| Home Assistant | container | recorder -> a co-located PostgreSQL |
 | Zigbee2MQTT | container | needs the USB coordinator; see Known risks |
 | Prometheus / Grafana | container | monitoring, not critical path |
 | Authentik / nginx / step-ca | container | web auth + TLS front door |
@@ -266,6 +266,28 @@ Remaining steps:
 Note: the Kanidm `oauth2-proxy` client now points at
 `zigbee2mqtt.int.esselius.dev`, so `adama`'s z2m *frontend login* is broken
 until the cutover - the daemon keeps running and automations are unaffected.
+
+## Pending cutover: Home Assistant
+
+The `home-assistant` workload is scaffolded and deployed but **disabled** (the
+module's target is dropped from `multi-user.target`), so it can't clash with
+`adama`'s HA. Remaining steps:
+
+1. Copy `adama`'s HA config dir (`/var/lib/hass`: `configuration.yaml`,
+   `.storage`, `custom_components`, ...) into the `home-assistant-data` volume.
+2. Re-enable HA (remove the `systemd.targets.home-assistant.wantedBy` override
+   in `guests/home-assistant`) and redeploy /
+   `systemctl start home-assistant.target`.
+3. Verify the UI at `home-assistant.int.esselius.dev` and that the recorder
+   writes to the local PostgreSQL, then stop `adama`'s HA and remove its vhost
+   and DNS entry.
+
+Notes:
+
+- The recorder DB starts empty; importing `adama`'s Postgres history is optional
+  (`pg_dump`/`pg_restore` into the guest).
+- This repo pins nixpkgs 26.05 (Home Assistant 2026.5.x), whereas `cfg` ran HA
+  from nixpkgs-unstable (2026.9.x) - check the config after cutover.
 
 ## Known risks
 
