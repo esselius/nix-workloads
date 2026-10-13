@@ -186,8 +186,8 @@
 
       systems.oauth2.oauth2-proxy = {
         displayName = "Zigbee2MQTT";
-        originUrl = "https://zigbee2mqtt.adama.lan/oauth2/callback";
-        originLanding = "https://zigbee2mqtt.adama.lan/";
+        originUrl = "https://zigbee2mqtt.int.esselius.dev/oauth2/callback";
+        originLanding = "https://zigbee2mqtt.int.esselius.dev/";
         basicSecretFile = config.sops.secrets.oauth2_proxy_secret.path;
         scopeMaps.homelab_users = [
           "openid"

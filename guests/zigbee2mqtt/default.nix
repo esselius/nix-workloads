@@ -86,6 +86,11 @@
     };
   };
 
+  # Don't start (and restart-loop) until the coordinator is actually present;
+  # the unix-hotplug device only appears once the dongle is on this host. A
+  # redeploy/restart after plugging it in starts the service.
+  systemd.services.zigbee2mqtt.unitConfig.ConditionPathExists = "/dev/ttyACM0";
+
   services.zigbee2mqtt = {
     enable = true;
     settings = {
