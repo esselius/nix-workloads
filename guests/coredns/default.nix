@@ -28,6 +28,8 @@ let
     node-red = "10.43.0.16";
     zigbee2mqtt = "10.43.0.17";
     home-assistant = "10.43.0.19";
+    # The Attic binary cache workload (serves cache.int.esselius.dev).
+    cache = "10.43.0.20";
   };
 
   # Non-HTTP service discovery (RFC 2782). Clients that honour SRV can find the

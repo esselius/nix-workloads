@@ -42,9 +42,14 @@ rebuilt/replaced without taking lights, heating, or MQTT down.
   healthy here (0 failed units). Keep it minimal; ideally it belongs upstream
   (nixpkgs #260670, distrobuilder #985).
 - Container guests set `nix.settings.max-jobs = 0`: they never build, only
-  substitute. Builds run on the Mac's `aarch64-linux` `nix.linux-builder`
-  (`task deploy` builds locally and copies to the instance); an in-guest build
-  fails with `local builds are disabled (max-jobs = 0)`.
+  substitute; an in-guest build fails with `local builds are disabled (max-jobs
+  = 0)`.
+- Builds run on the Mac's `aarch64-linux` `nix.linux-builder`, and results reach
+  the fleet through one shared cache: the `attic` workload
+  (`cache.int.esselius.dev`). `task cache-push -- <name>` pushes only that
+  workload's system closure (never everything the builder compiles), and
+  `task deploy` passes `--use-substitutes` so the target pulls it instead of
+  receiving it over SSH. See README "Build cache (Attic)".
 - The USB Zigbee coordinator is physical, so a Zigbee2MQTT workload is pinned to
   the board the dongle is plugged into (never migrates with the instance). It can
   be a container: pass the host's `cdc_acm` node with a `unix-char` device

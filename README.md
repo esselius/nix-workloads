@@ -180,8 +180,10 @@ task up     -- example             # create/update it (tf apply)
 task down   -- example             # destroy it
 
 task onboard -- example            # trust the guest's host key for sops + rekey
+task cache-push -- example         # push the guest's closure to the Attic cache
 task deploy -- example             # nixos-rebuild the guest onto it (see Deploy)
 task deploy-all                    # deploy every workload in dependency order
+task provision-all                 # up -> onboard -> cache-push -> deploy, all workloads
 task fmt                           # nix fmt
 task check                         # nix flake check (every workload)
 task check -- mosquitto            # evaluate one workload only (fast inner loop)
@@ -202,13 +204,15 @@ ownership/mode and trips sshd's `StrictModes`).
 
 `task deploy -- example` looks the instance's address up from incus (`incus list
 example -c 4 --format csv`) and runs `nixos-rebuild switch --flake .#example
---target-host root@<ip>`, with `NIX_SSHOPTS` set to accept the guest's host key.
-The system is built **locally on the Mac**, dispatched to its `aarch64-linux`
-`nix.linux-builder` (a remote in `/etc/nix/machines`), then copied to the
-instance - the guest itself never builds (the unprivileged guest has no user
-namespaces, so Nix cannot sandbox a build inside it anyway). The guests set
-`nix.settings.max-jobs = 0`, so a build attempted inside a container fails
-outright (`local builds are disabled (max-jobs = 0)`).
+--target-host root@<ip> --use-substitutes`, with `NIX_SSHOPTS` set to accept the
+guest's host key. The system is built **locally on the Mac**, dispatched to its
+`aarch64-linux` `nix.linux-builder` (a remote in `/etc/nix/machines`), and handed
+to the instance: `--use-substitutes` lets the guest pull the closure from its
+substituters (the Attic cache, see below) instead of receiving it over SSH. The
+guest itself never builds (the unprivileged guest has no user namespaces, so Nix
+cannot sandbox a build inside it anyway); it sets `nix.settings.max-jobs = 0`, so
+a build attempted inside a container fails outright (`local builds are disabled
+(max-jobs = 0)`).
 
 Off the VPN, add a ProxyJump for the guest. Do it in `~/.ssh/config` rather than
 in `NIX_SSHOPTS`:
@@ -222,6 +226,89 @@ Host 10.43.0.*
 The provisioner runs only on create; after the first switch the key is declared
 in `guests/example/default.nix`, so later rebuilds only need
 `task deploy -- <name>`.
+
+## Build cache (Attic)
+
+The one place a build result can live so it is not rebuilt everywhere: the
+`attic` workload (`cache.int.esselius.dev`), a self-hosted Attic binary cache on
+a persistent volume. The Mac's `nix.linux-builder` is the only builder; the cache
+is how its results reach the hosts and guests.
+
+```
+builder ──build──▶ task cache-push ──▶ cache ──substitute──▶ target
+   Mac ── orchestrates ──┘
+```
+
+- **Push only what you deploy.** `task cache-push -- <name>` pushes that
+  workload's *system closure* (`attic push` walks references and skips paths
+  already on `cache.nixos.org`). The builder's intermediates stay on the builder,
+  so the cache holds distribution artifacts - not everything ever compiled.
+- **Pull on the target.** `task deploy` passes `--use-substitutes`, so the target
+  substitutes the closure from the cache instead of receiving it over SSH; the
+  Mac's uplink is out of the path.
+
+### One-time bootstrap
+
+Attic's cache signing key is generated when the cache is *created*, so the
+clients' `trusted-public-keys` can only be filled in afterwards:
+
+1. `task up -- attic`, `task onboard -- attic` (adds the guest's host key to
+   `.sops.yaml` and rekeys `secrets/attic.yaml`), then `task deploy -- attic`.
+2. Mint an access token on the server. `atticd-atticadm` is the module's
+   `atticadm` wrapper (run it in the guest); `--create-cache` is what lets the
+   token create `homelab`, `--pull`/`--push` grant access to it:
+   ```fish
+   incus exec attic -- atticd-atticadm make-token \
+     --sub peter --validity '10 years' \
+     --pull homelab --push homelab --create-cache homelab
+   ```
+3. Register the server on the Mac, create the cache, and read its public key:
+   ```fish
+   nix develop
+   attic login homelab https://cache.int.esselius.dev/ <token-from-step-2>
+   attic cache create homelab
+   attic cache info homelab    # -> Public Key: homelab:<base64>
+   ```
+   A token is a secret: don't paste it into the repo - it lives in the Mac's
+   `~/.config/attic/config.toml`.
+4. Paste that key into the three `cachePublicKey` slots - the workloads
+   `modules/nix-cache.nix`, the hosts `modules/nix-cache.nix`, and the Mac's
+   `determinateNix` settings in nix-config. Until then the substituter is listed
+   but untrusted, so nix simply falls back to copying.
+
+> If step 2 fails with a permission error on `/var/lib/atticd`, the module's
+> `atticd-atticadm` wrapper runs with `DynamicUser=yes` (a different uid than the
+> fixed `atticd` user owning the DB). See "DynamicUser and the volume" below.
+
+### DynamicUser and the volume
+
+`services.atticd` runs atticd as a `DynamicUser` with `StateDirectory = "atticd"`,
+and systemd relocates a dynamic user's state dir to `/var/lib/private/atticd`.
+That collides with the persistent volume mounted at `/var/lib/atticd`:
+
+```
+Failed to set up special execution directory in /var/lib: Device or resource busy
+status=238/STATE_DIRECTORY
+```
+
+The guest therefore runs atticd as a fixed user (`DynamicUser = false` +
+`users.users.atticd`) so the state dir stays at `/var/lib/atticd`, on the volume.
+Trade-off: the module's `atticd-atticadm` wrapper still launches its transient
+unit with `DynamicUser=yes`, i.e. a different uid than the one owning
+`/var/lib/atticd/server.db` (`UMask 0077`) - minting a token can hit a permission
+error. If it does, switch approaches: keep the module's `DynamicUser` and mount
+the volume at `/var/lib/private/atticd` (pointing `database.url` and
+`storage.path` there), so the wrapper and the daemon share one uid.
+
+### Sizing + GC
+
+Fleet system closures total ~19 GiB unpacked (host 3.7 GiB; guests 1.4-3.0 GiB
+each); chunked, zstd-compressed and deduplicated across the shared base, the
+cache holds ~10-15 GiB, so a 32 GiB volume is comfortable (`attic-data`, on the
+host's `/persist`). GC runs every 12h and drops objects neither created nor
+accessed within six months (`garbage-collection.default-retention-period`) -
+without a retention period the cache grows unbounded. Frequently-substituted
+paths stay hot.
 
 ## Adding a workload
 

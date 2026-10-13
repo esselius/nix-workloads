@@ -87,11 +87,28 @@ tasks:
         fi
         echo "deploying to $name ($ip)"
         # Build locally on the Mac, dispatched to its aarch64-linux
-        # nix.linux-builder remote (/etc/nix/machines), then copy to the
-        # instance. The guest itself never builds (max-jobs = 0).
+        # nix.linux-builder remote (/etc/nix/machines), then hand the system to
+        # the instance. The guest itself never builds (max-jobs = 0).
+        #
+        # --use-substitutes tells nixos-rebuild to let the *target* substitute
+        # missing paths from its own substituters (the Attic cache) instead of
+        # receiving them over SSH - so the closure travels cache -> target, not
+        # Mac -> target. Push the closure first with `task cache-push -- <name>`.
         NIX_SSHOPTS="-o StrictHostKeyChecking=accept-new" \
           nixos-rebuild switch --flake ".#$name" \
-          --target-host "root@$ip"
+          --target-host "root@$ip" --use-substitutes
+
+  cache-push:
+    desc: "Push a workload's system closure to the Attic cache. Usage: task cache-push -- <name>"
+    cmds:
+      - |
+        name="{{index .CLI_ARGS_LIST 0}}"
+        # Only the deployable closure is pushed (not every intermediate the
+        # builder produced) - see the README's build-cache section. `attic push`
+        # walks the closure and skips paths already on cache.nixos.org.
+        system="$(nix build ".#nixosConfigurations.$name.config.system.build.toplevel" --no-link --print-out-paths)"
+        echo "pushing $name ($system) to the cache"
+        attic push "${CACHE:-homelab}" "$system"
 
   deploy-all:
     desc: "Deploy every workload in dependency order. Usage: task deploy-all"
@@ -109,6 +126,35 @@ tasks:
         for name in $roots $rest; do
           start=$(date +%s)
           echo "==> deploy $name"
+          task deploy -- "$name"
+          echo "    $name: $(( $(date +%s) - start ))s"
+        done
+
+  provision-all:
+    desc: "up -> onboard -> cache-push -> deploy for every workload except example. Usage: task provision-all"
+    cmds:
+      - |
+        set -e
+        # Dependency roots first (names, then the CA); the rest follow. Only the
+        # *ordering* is explicit - the set is derived from terraform/<name>/, so
+        # it can't go stale as workloads land. `example` is a scaffold, skipped.
+        roots="coredns step-ca"
+        rest=$(for d in terraform/*/; do
+          n=${d#terraform/}; n=${n%/}
+          case " $roots example " in *" $n "*) ;; *) echo "$n";; esac
+        done)
+        for name in $roots $rest; do
+          start=$(date +%s)
+          echo "==> $name: up"
+          task up -- "$name"
+          echo "==> $name: onboard"
+          task onboard -- "$name"
+          echo "==> $name: cache-push"
+          # Best-effort: the cache needs its one-time bootstrap (attic login).
+          # If it fails, deploy still works - the guest just receives a copy.
+          task cache-push -- "$name" \
+            || echo "    cache-push failed for $name - continuing (deploy will copy)"
+          echo "==> $name: deploy"
           task deploy -- "$name"
           echo "    $name: $(( $(date +%s) - start ))s"
         done
