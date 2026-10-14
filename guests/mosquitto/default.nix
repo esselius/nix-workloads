@@ -54,7 +54,6 @@ in
     # WiFi/LAN clients reach the broker. Deliberately no gateway - the LAN
     # subnet is directly connected, and internet egress stays on eth0 so there
     # is only one default route. Address is outside the router's DHCP pool.
-    # Absent on local runs (no physical LAN uplink in the VM).
     networks."50-eth1" = lib.mkIf config.local.lan.enable {
       matchConfig.Name = "eth1";
       address = [ config.local.lan.address ];
@@ -93,7 +92,7 @@ in
   # clears LoadCredential for non-nested containers.
   sops = {
     age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
-    defaultSopsFile = config.local.sopsDir + "/mosquitto.yaml";
+    defaultSopsFile = ../../secrets/mosquitto.yaml;
     secrets = {
       mqtt_z2m = { };
       mqtt_hass = { };

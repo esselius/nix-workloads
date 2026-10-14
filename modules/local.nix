@@ -8,9 +8,9 @@ let
 in
 {
   # Shared, profile-selectable knobs. Defaults describe the homelab (the Pi
-  # hosts); `profiles/local.nix` overrides them for a local Colima run. Guests
-  # read these instead of hard-coding `int.esselius.dev` / the Esselius CA / the
-  # Attic cache, so one profile switch retargets the whole stack.
+  # hosts); a local env (e.g. an incus VM on the Mac) can override them by
+  # setting `local.*` in its own module. Guests read these instead of
+  # hard-coding `int.esselius.dev` / the Esselius CA / the Attic cache.
   options.local = {
     domain = mkOption {
       type = types.str;
@@ -35,15 +35,7 @@ in
       default = "acme@esselius.dev";
     };
 
-    # Directory the guests' sops files live in. The local profile points this at
-    # a gitignored overlay (secrets/local/) re-encrypted for the local guests, so
-    # onboarding a Colima guest never rewrites the committed secrets.
-    sopsDir = mkOption {
-      type = types.path;
-      default = ../secrets;
-    };
-
-    # Static TLS material for local runs (null = issue via ACME).
+    # Static TLS material (null = issue via ACME).
     tls = {
       cert = mkOption {
         type = types.nullOr types.path;
@@ -66,8 +58,7 @@ in
       };
     };
 
-    # The macvlan `eth1` LAN NIC some workloads carry. Off for local runs
-    # (there is no physical LAN uplink inside the VM).
+    # The macvlan `eth1` LAN NIC some workloads carry.
     lan = {
       enable = mkOption {
         type = types.bool;

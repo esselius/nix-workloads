@@ -17,14 +17,11 @@ rebuilt/replaced without taking lights, heating, or MQTT down.
      profiles, resource limits, devices.
   3. **OS** - `guests/<name>/default.nix`, a `nixosConfigurations.<name>` system
      deployed into the running instance with `nixos-rebuild`.
-- **Profiles.** Homelab vs local is a profile, not a fork: `modules/local.nix`
-  holds the shared knobs (domain, CA, ACME, cache, LAN) with Pi defaults,
-  `profiles/{homelab,local}.nix` set them, and `flake.nix` builds both
-  `nixosConfigurations.<name>` and `<name>-local` (same for terranix, with local
-  state under `terraform/local/`). Guests must read `config.local.*`, never
-  hard-code `int.esselius.dev` / the Esselius CA / the Attic URL. `PROFILE=local`
-  switches the Taskfile + `tf`. Local = Colima + `*.localho.st` + the static
-  wildcard in `certs/local/` (see README "Local (Colima)").
+- **Shared knobs.** `modules/local.nix` holds the shared, overridable knobs
+  (domain, CA, ACME, cache, LAN) with Pi defaults. Guests must read
+  `config.local.*`, never hard-code `int.esselius.dev` / the Esselius CA / the
+  Attic URL, so a different environment (e.g. a local incus VM on the Mac) is a
+  matter of setting those options rather than forking the configs.
 - Prefer small, explicit modules over abstractions. `terraform/common.nix` holds
   the only shared terranix config (the incus provider + remote); every workload
   is a sibling directory under `terraform/`.

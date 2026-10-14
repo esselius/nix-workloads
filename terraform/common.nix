@@ -24,15 +24,14 @@
     description = "incus storage pool for workload data volumes.";
   };
 
-  # The macvlan `eth1` LAN NIC some workloads carry; off for local runs.
+  # The macvlan `eth1` LAN NIC some workloads carry.
   options.local.lan.enable = lib.mkOption {
     type = lib.types.bool;
     default = true;
     description = "Attach the macvlan eth1 LAN NIC.";
   };
 
-  # Which incus server OpenTofu drives. Homelab default is the rpi5-8gb remote;
-  # `terraform/local.nix` retargets it at Colima.
+  # Which incus server OpenTofu drives. Default is the rpi5-8gb remote.
   options.local.incus = {
     defaultRemote = lib.mkOption {
       type = lib.types.str;

@@ -24,14 +24,10 @@ instance existence. That split is what lets a workload be upgraded in place
 
 ```
 flake.nix                    flake-parts + terranix; registers workloads + guest systems
-modules/local.nix            shared profile knobs (domain, CA, ACME, cache, LAN)
-profiles/homelab.nix         Pi defaults (empty; the modules/local.nix defaults)
-profiles/local.nix           localho.st + static certs + Colima overrides
+modules/local.nix            shared knobs (domain, CA, ACME, cache, LAN) - see below
 terraform/common.nix         shared terranix config: incus provider + remote
-terraform/local.nix          terranix overrides for the Colima remote
 terraform/<name>/default.nix one workload's infrastructure
 guests/<name>/default.nix    one workload's NixOS system
-certs/local/                 static *.localho.st wildcard + local root (see Local)
 secrets/<name>.yaml          sops-encrypted secrets (see Secrets)
 .sops.yaml                   age recipients per secret path
 ```
@@ -39,7 +35,12 @@ secrets/<name>.yaml          sops-encrypted secrets (see Secrets)
 `terraform/common.nix` points the `lxc/incus` provider at the `rpi5-8gb` remote
 (`https://rpi5-8gb.x.esselius.dev:8443`) and reuses the Mac's client certificate
 from `~/.config/incus`. Add `rpi5-4gb` there when the second board is wanted.
-The remote is `local.incus.*`; `terraform/local.nix` retargets it at Colima.
+The remote is the `local.incus.*` option.
+
+Guests never hard-code `int.esselius.dev`, the Esselius CA, or the Attic URL:
+they read the `local.*` options in `modules/local.nix` (whose defaults describe
+the homelab), so a different environment - a local incus VM on the Mac, say - is
+a matter of setting those options rather than forking the configs.
 
 ## Networking
 
@@ -201,9 +202,6 @@ wrap `tf <name> <action>` (which builds `terraform/<name>/default.nix` into
 `config.tf.json` and runs OpenTofu there); `deploy` wraps `nixos-rebuild`. The
 raw terranix apps (`nix run .#example`, `.#example.destroy`) still work too.
 
-`PROFILE=local` runs the same tasks against Colima with `*.localho.st` names -
-see [Local (Colima)](#local-colima).
-
 ## Deploy (first boot)
 
 `task up` (the terranix apply) seeds root's SSH key automatically: a
@@ -338,62 +336,6 @@ host's `/persist`). GC runs every 12h and drops objects neither created nor
 accessed within six months (`garbage-collection.default-retention-period`) -
 without a retention period the cache grows unbounded. Frequently-substituted
 paths stay hot.
-
-## Local (Colima)
-
-Run the stack against a local incus (Colima) instead of the Pi, with
-`*.localho.st` names and a static wildcard cert - no WireGuard, no internal DNS,
-no Attic. A profile switch (`PROFILE=local`) selects the `-local` systems and
-terranix configs; the Pi flow is untouched.
-
-**Naming + TLS.** `*.localho.st` is public wildcard DNS that resolves to
-`127.0.0.1`, so the Mac reaches a workload at `mosquitto.localho.st:1883`. TLS
-uses `certs/local/localho.st.{crt,key}`, a wildcard issued from the
-name-constrained `localho.st` intermediate (`github.com/esselius/pki`, whose
-intermediate may only issue for `localho.st`); guests trust
-`certs/local/root-ca.crt` (already trusted by the Mac keychain). `profiles/local.nix`
-sets `local.domain`, `local.caFiles`, `local.tls`, `local.cache.url` and disables
-the macvlan `eth1` and the monitoring agent.
-
-**One-time Colima setup.**
-
-```fish
-brew install colima incus
-colima start --runtime incus --cpu 4 --memory 8
-incus remote switch colima            # or: export INCUS_REMOTE=colima
-PROFILE=local task local-bootstrap    # incusbr-vpn network + container/vpn ports
-task local-forward                    # open the SSH tunnels (keep it running)
-```
-
-Colima can't forward to incus guests itself, and the Mac's WireGuard route
-shadows the guests' `10.43.0.0/24` subnet, so `task local-forward` tunnels host
-ports to the guests through the VM's sshd (`ssh -L` via `colima ssh-config`):
-`1883` (mqtt), and `10000 + <last octet>` for guest SSH (`10.43.0.11` -> `10011`,
-`10.43.0.14` -> `10014`). `deploy`/`onboard` use those ports; `deploy` also skips
-the Attic substitution guard locally (there is no cache, so the closure is
-copied over the tunnel). Add a `-L` for each new workload's service port.
-
-**Use.**
-
-```fish
-PROFILE=local task up      -- mosquitto
-PROFILE=local task onboard -- mosquitto
-PROFILE=local task deploy  -- mosquitto
-# then: mqtt client -> mosquitto.localho.st:1883
-```
-
-Local state lives under `terraform/local/<name>/` (git-ignored), so it never
-collides with the homelab state. Scope so far: `coredns` + `mosquitto`; the other
-guests still hard-code `int.esselius.dev` and are refactored as they come into
-scope.
-
-**Secrets.** `task onboard` on a local guest never rewrites the committed
-`.sops.yaml`/`secrets/`. It keeps a git-ignored overlay instead: a re-encrypted
-copy at `secrets/local/<name>.yaml` plus a matching `.sops.local.yaml`, and
-`profiles/local.nix` points `local.sopsDir` there, so the guest's
-`sops.defaultSopsFile` is the local copy. Local builds use the `path:` flake
-reference (`path:.#mosquitto-local`) so Nix can see the git-ignored overlay - the
-git flake would reject it. `rm -rf secrets/local .sops.local.yaml` resets it.
 
 ## Adding a workload
 
