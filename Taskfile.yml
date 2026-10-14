@@ -21,32 +21,79 @@ tasks:
     cmds:
       - incus file push --uid 0 --gid 0 --mode 600 ~/.ssh/id_ed25519.pub {{index .CLI_ARGS_LIST 0}}/root/.ssh/authorized_keys --create-dirs
 
+  local-bootstrap:
+    desc: "Create the Colima incus network + profiles for PROFILE=local (see README)."
+    cmds:
+      - |
+        set -e
+        incus network show incusbr-vpn >/dev/null 2>&1 ||
+          incus network create incusbr-vpn ipv4.address=10.43.0.1/24 ipv4.nat=false ipv6.address=none
+        incus profile show container >/dev/null 2>&1 || incus profile create container
+        if ! incus profile show vpn >/dev/null 2>&1; then
+          incus profile create vpn
+          incus profile device add vpn eth0 nic network=incusbr-vpn
+        fi
+        echo "local incus network + profiles ready"
+
+  local-forward:
+    desc: "Open SSH forwards to the local guests (Colima). Run before PROFILE=local deploy."
+    cmds:
+      - |
+        set -e
+        cfg="${TMPDIR:-/tmp}/nix-workloads-colima-ssh.cfg"
+        colima ssh-config > "$cfg"
+        # Colima cannot forward to incus guests itself, so tunnel host ports to
+        # the guests through the VM's sshd. 10000 + <last octet> = guest SSH.
+        ssh -f -F "$cfg" -o ExitOnForwardFailure=yes -N \
+          -L 127.0.0.1:10011:10.43.0.11:22 \
+          -L 127.0.0.1:1883:10.43.0.11:1883 \
+          -L 127.0.0.1:10014:10.43.0.14:22 \
+          colima
+        echo "local forwards up: 1883 (mqtt), 10011 (mosquitto ssh), 10014 (coredns ssh)"
+
   onboard:
     desc: "Trust a guest's host key for sops, rekey its secret, and seed Attic cache trust. Usage: task onboard -- <name>"
     cmds:
       - |
         set -e
         name="{{index .CLI_ARGS_LIST 0}}"
+        profile="${PROFILE:-homelab}"
 
-        ip="$(incus config device get "$name" eth0 ipv4.address 2>/dev/null || true)"
-        if [ -z "$ip" ]; then
-          ip="$(incus list "$name" -c 4 --format csv | head -1 | tr -d '\"')"
-          ip="${ip%% *}"
-        fi
-        if [ -z "$ip" ]; then
-          echo "no private IPv4 for instance '$name' - is it running?" >&2
-          exit 1
-        fi
-
-        recipient="$(ssh-keyscan -t ed25519 "$ip" 2>/dev/null | ssh-to-age)"
+        # Read the guest's SSH host key through the incus API (no network/SSH,
+        # so it works locally without a forwarded port) as an age recipient.
+        recipient="$(incus exec "$name" -- cat /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | ssh-to-age)"
         if [ -z "$recipient" ]; then
-          echo "could not read the host key from $ip - is sshd up?" >&2
+          echo "could not read the host key from '$name' - is it running?" >&2
           exit 1
         fi
-        echo "$name ($ip) -> $recipient"
+        echo "$name -> $recipient"
 
-        if grep -qF "$recipient" .sops.yaml; then
-          echo "already trusted in .sops.yaml"
+        # Local runs use a gitignored overlay (secrets/local/ + .sops.local.yaml)
+        # so onboarding a Colima guest never rewrites the committed .sops.yaml /
+        # secrets/<name>.yaml.
+        if [ "$profile" = local ]; then
+          sops_config=".sops.local.yaml"
+          sops_dir="secrets/local"
+          mkdir -p "$sops_dir"
+          if [ ! -f "$sops_config" ]; then
+            mac="$(ssh-to-age < "$HOME/.ssh/id_ed25519.pub")"
+            {
+              echo "creation_rules:"
+              echo "  - path_regex: secrets/local/.*\\.ya?ml$"
+              echo "    key_groups:"
+              echo "      - age:"
+              echo "          - $mac"
+            } > "$sops_config"
+          fi
+          # Seed the local copy from the committed secret on first onboard.
+          [ -f "$sops_dir/$name.yaml" ] || cp "secrets/$name.yaml" "$sops_dir/$name.yaml"
+        else
+          sops_config=".sops.yaml"
+          sops_dir="secrets"
+        fi
+
+        if grep -qF "$recipient" "$sops_config"; then
+          echo "already trusted in $sops_config"
         else
           awk -v r="$recipient" -v n="$name" '
             { lines[NR]=$0
@@ -56,42 +103,49 @@ tasks:
               }
             }
             END { for (i=1;i<=NR;i++) { print lines[i]; if (i==last) printf "%s- %s # %s\n", indent, r, n } }
-          ' .sops.yaml > .sops.yaml.tmp
-          mv .sops.yaml.tmp .sops.yaml
-          echo "added $name to .sops.yaml"
+          ' "$sops_config" > "$sops_config.tmp"
+          mv "$sops_config.tmp" "$sops_config"
+          echo "added $name to $sops_config"
         fi
 
-        if [ -f "secrets/$name.yaml" ]; then
+        if [ -f "$sops_dir/$name.yaml" ]; then
           export SOPS_AGE_KEY_CMD="ssh-to-age -private-key -i $HOME/.ssh/id_ed25519"
-          printf 'y\n' | sops updatekeys "secrets/$name.yaml"
+          export SOPS_CONFIG="$sops_config"
+          printf 'y\n' | sops updatekeys "$sops_dir/$name.yaml"
         fi
 
-        substituter="$(nix eval --raw ".#nixosConfigurations.$name.config.nix.settings.extra-substituters" --apply 'builtins.concatStringsSep " "')"
-        cachekey="$(nix eval --raw ".#nixosConfigurations.$name.config.nix.settings.extra-trusted-public-keys" --apply 'builtins.concatStringsSep " "')"
-        incus file push --create-dirs --uid 0 --gid 0 --mode 644 certs/root_ca.crt "$name/etc/nix/internal-root-ca.crt"
-        incus exec "$name" -- sh -ec '
-          export PATH=/run/current-system/sw/bin:/run/wrappers/bin:$PATH
-          f=/etc/nix/nix.conf
-          if [ -L "$f" ]; then
-            target="$(readlink -f "$f")"
-            rm -f "$f"
-            cp "$target" "$f"
-          fi
-          bundle=/etc/ssl/certs/ca-certificates.crt
-          [ -e "$bundle" ] || bundle=/etc/ssl/certs/ca-bundle.crt
-          cat "$bundle" /etc/nix/internal-root-ca.crt > /etc/nix/ssl-cert-file.pem
-          if ! grep -q "nix-workloads cache seed" "$f"; then
-            printf "\n# nix-workloads cache seed\nextra-substituters = %s\nextra-trusted-public-keys = %s\nssl-cert-file = /etc/nix/ssl-cert-file.pem\n" "$1" "$2" >> "$f"
-          fi
-          systemctl restart nix-daemon
-        ' sh "$substituter" "$cachekey"
+        # Seed the base image with Attic trust so its first deploy can
+        # substitute. Only relevant to the homelab profile (local runs copy).
+        if [ "$profile" != local ]; then
+          substituter="$(nix eval --raw ".#nixosConfigurations.$name.config.nix.settings.extra-substituters" --apply 'builtins.concatStringsSep " "')"
+          cachekey="$(nix eval --raw ".#nixosConfigurations.$name.config.nix.settings.extra-trusted-public-keys" --apply 'builtins.concatStringsSep " "')"
+          incus file push --create-dirs --uid 0 --gid 0 --mode 644 certs/root_ca.crt "$name/etc/nix/internal-root-ca.crt"
+          incus exec "$name" -- sh -ec '
+            export PATH=/run/current-system/sw/bin:/run/wrappers/bin:$PATH
+            f=/etc/nix/nix.conf
+            if [ -L "$f" ]; then
+              target="$(readlink -f "$f")"
+              rm -f "$f"
+              cp "$target" "$f"
+            fi
+            bundle=/etc/ssl/certs/ca-certificates.crt
+            [ -e "$bundle" ] || bundle=/etc/ssl/certs/ca-bundle.crt
+            cat "$bundle" /etc/nix/internal-root-ca.crt > /etc/nix/ssl-cert-file.pem
+            if ! grep -q "nix-workloads cache seed" "$f"; then
+              printf "\n# nix-workloads cache seed\nextra-substituters = %s\nextra-trusted-public-keys = %s\nssl-cert-file = /etc/nix/ssl-cert-file.pem\n" "$1" "$2" >> "$f"
+            fi
+            systemctl restart nix-daemon
+          ' sh "$substituter" "$cachekey"
+        fi
 
   deploy:
-    desc: "Deploy a guest's NixOS system. Usage: task deploy -- <name>"
+    desc: "Deploy a guest's NixOS system. Usage: [PROFILE=local] task deploy -- <name>"
     cmds:
       - |
         set -e
         name="{{index .CLI_ARGS_LIST 0}}"
+        profile="${PROFILE:-homelab}"
+        attr="$name"; [ "$profile" = local ] && attr="$name-local"
 
         ip="$(incus config device get "$name" eth0 ipv4.address 2>/dev/null || true)"
         if [ -z "$ip" ]; then
@@ -102,42 +156,69 @@ tasks:
           echo "no private IPv4 for instance '$name' - is it running?" >&2
           exit 1
         fi
-        echo "deploying to $name ($ip)"
+
+        # Homelab reaches the guest at its 10.43.0.x. Locally that address lives
+        # inside the Colima VM, so SSH goes through a forwarded port on
+        # 127.0.0.1 (see README "Local (Colima)").
+        ssh_port=""
+        target_ip="$ip"
+        ref="."
+        if [ "$profile" = local ]; then
+          target_ip=127.0.0.1
+          ssh_port=$((10000 + ${ip##*.}))
+          # `path:` so Nix sees the gitignored secrets/local/ overlay.
+          ref="path:."
+        fi
+        ssh_opts="-o StrictHostKeyChecking=accept-new"
+        [ -n "$ssh_port" ] && ssh_opts="-p $ssh_port $ssh_opts"
+        echo "deploying to $name ($attr) at $target_ip${ssh_port:+:$ssh_port}"
 
         ca="${TMPDIR:-/tmp}/nix-workloads-ca-bundle.crt"
         base="$(nix config show ssl-cert-file 2>/dev/null || true)"
         if [ -z "$base" ] || [ ! -e "$base" ]; then base=/etc/ssl/certs/ca-certificates.crt; fi
         cat "$base" certs/root_ca.crt > "$ca"
 
-        system="$(nix build ".#nixosConfigurations.$name.config.system.build.toplevel" --no-link --print-out-paths --option ssl-cert-file "$ca" --option narinfo-cache-negative-ttl 0)"
+        system="$(nix build "$ref#nixosConfigurations.$attr.config.system.build.toplevel" --no-link --print-out-paths --option ssl-cert-file "$ca" --option narinfo-cache-negative-ttl 0)"
 
-        # attic/step-ca/coredns bootstrap the cache, so a miss there may still copy.
+        # Homelab: the target must substitute the closure (attic/step-ca/coredns
+        # bootstrap the cache, so a miss there may still copy). Local: no cache,
+        # so copy.
         case " attic step-ca coredns " in
           *" $name "*)
             echo "bootstrap workload: a cache miss may copy"
             ;;
           *)
-            if ! ssh -o StrictHostKeyChecking=accept-new "root@$ip" \
-              nix-store --realise "$system" \
-              --option download-attempts 1 --option connect-timeout 5 \
-              --option narinfo-cache-negative-ttl 0; then
-              echo "error: $name cannot substitute its closure from the cache." >&2
-              echo "       run 'task cache-push -- $name' first" >&2
-              exit 1
+            if [ "$profile" != local ]; then
+              if ! ssh $ssh_opts "root@$target_ip" \
+                nix-store --realise "$system" \
+                --option download-attempts 1 --option connect-timeout 5 \
+                --option narinfo-cache-negative-ttl 0; then
+                echo "error: $name cannot substitute its closure from the cache." >&2
+                echo "       run 'task cache-push -- $name' first" >&2
+                exit 1
+              fi
             fi
             ;;
         esac
 
+        # A short TMPDIR: nixos-rebuild puts its ssh control socket under
+        # $TMPDIR, and the devshell's /tmp/nix-shell.* path overflows the
+        # 104-char Unix socket limit.
+        TMPDIR=/tmp \
         NIX_CONFIG="ssl-cert-file = $ca" \
-        NIX_SSHOPTS="-o StrictHostKeyChecking=accept-new" \
-          nixos-rebuild switch --flake ".#$name" \
-          --target-host "root@$ip" --use-substitutes
+        NIX_SSHOPTS="$ssh_opts" \
+          nixos-rebuild switch --flake "$ref#$attr" \
+          --target-host "root@$target_ip" --use-substitutes
 
   cache-push:
-    desc: "Push a workload's system closure to the Attic cache. Usage: task cache-push -- <name>"
+    desc: "Push a workload's system closure to the Attic cache. Usage: [PROFILE=local] task cache-push -- <name>"
     cmds:
       - |
         name="{{index .CLI_ARGS_LIST 0}}"
+        if [ "${PROFILE:-homelab}" = local ]; then
+          echo "local profile: no Attic cache; nothing to push"
+          exit 0
+        fi
 
         ca="${TMPDIR:-/tmp}/nix-workloads-ca-bundle.crt"
         base="$(nix config show ssl-cert-file 2>/dev/null || true)"

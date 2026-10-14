@@ -7,3 +7,9 @@ terraform.tfstate.*
 *.tfstate
 *.tfstate.*
 terraform/*/config.tf.json
+terraform/local/
+
+# Local (Colima) secrets overlay: re-encrypted copies + the matching sops
+# config, so local onboarding never touches the committed .sops.yaml/secrets.
+secrets/local/
+.sops.local.yaml*

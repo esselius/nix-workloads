@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ lib, config, ... }:
 {
   # The managed incus bridge workloads attach to for WireGuard-reachable
   # addressing. Single source of truth for the workload modules; must match
@@ -24,6 +24,42 @@
     description = "incus storage pool for workload data volumes.";
   };
 
+  # The macvlan `eth1` LAN NIC some workloads carry; off for local runs.
+  options.local.lan.enable = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = "Attach the macvlan eth1 LAN NIC.";
+  };
+
+  # Which incus server OpenTofu drives. Homelab default is the rpi5-8gb remote;
+  # `terraform/local.nix` retargets it at Colima.
+  options.local.incus = {
+    defaultRemote = lib.mkOption {
+      type = lib.types.str;
+      default = "rpi5-8gb";
+      description = "incus remote the provider uses by default.";
+    };
+    remote = lib.mkOption {
+      type = lib.types.listOf lib.types.attrs;
+      default = [
+        {
+          name = "rpi5-8gb";
+          address = "https://rpi5-8gb.x.esselius.dev:8443";
+          authentication_type = "tls";
+        }
+      ];
+      description = "Inline remotes declared to the provider (empty = use ~/.config/incus).";
+    };
+    generateClientCertificates = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+    };
+    acceptRemoteCertificate = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+    };
+  };
+
   config = {
     terraform.required_providers.incus = {
       source = "lxc/incus";
@@ -40,16 +76,10 @@
     # README ("Prerequisites") - the host's local.incus.tls.clientCertificates
     # lives in github.com/esselius/nix-homelab-hosts.
     provider.incus = {
-      generate_client_certificates = true;
-      accept_remote_certificate = true;
-      default_remote = "rpi5-8gb";
-      remote = [
-        {
-          name = "rpi5-8gb";
-          address = "https://rpi5-8gb.x.esselius.dev:8443";
-          authentication_type = "tls";
-        }
-      ];
+      generate_client_certificates = config.local.incus.generateClientCertificates;
+      accept_remote_certificate = config.local.incus.acceptRemoteCertificate;
+      default_remote = config.local.incus.defaultRemote;
+      remote = config.local.incus.remote;
     };
   };
 }

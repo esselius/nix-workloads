@@ -30,6 +30,8 @@ in
           "ipv4.address" = staticIp;
         };
       }
+    ]
+    ++ lib.optionals config.local.lan.enable [
       {
         # Second NIC: macvlan on the LAN, so WiFi/LAN MQTT clients (p1ib, ESP
         # devices) reach the broker without WireGuard. The address is set

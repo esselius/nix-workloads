@@ -61,6 +61,27 @@
         };
       };
       metaFor = name: guestMeta.${name} or { sops = true; };
+
+      # One workload's system for a given profile ("homelab" | "local").
+      mkSystem =
+        profile: name:
+        let
+          meta = metaFor name;
+        in
+        nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          specialArgs = (meta.specialArgs or { }) // {
+            inherit profile;
+          };
+          modules = lib.optionals (meta.sops or true) [ sops-nix.nixosModules.sops ] ++ [
+            ./modules/local.nix
+            ./modules/lxc-credentials.nix
+            ./modules/monitoring-agent.nix
+            ./modules/nix-cache.nix
+            ./profiles/${profile}.nix
+            ./guests/${name}
+          ];
+        };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [ terranix.flakeModule ];
@@ -70,22 +91,13 @@
         "aarch64-linux"
       ];
 
-      flake.nixosConfigurations = lib.genAttrs workloads (
-        name:
-        let
-          meta = metaFor name;
-        in
-        nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          specialArgs = meta.specialArgs or { };
-          modules = lib.optionals (meta.sops or true) [ sops-nix.nixosModules.sops ] ++ [
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./modules/nix-cache.nix
-            ./guests/${name}
-          ];
-        }
-      );
+      # Homelab systems under the bare name; local Colima variants suffixed
+      # `-local` (keeps the `nixosConfigurations` root output key).
+      flake.nixosConfigurations =
+        lib.genAttrs workloads (mkSystem "homelab")
+        // lib.listToAttrs (
+          map (name: lib.nameValuePair "${name}-local" (mkSystem "local" name)) workloads
+        );
 
       perSystem =
         {
@@ -119,8 +131,22 @@
                 *) echo "Unknown action: $action (init|plan|apply|destroy)"; exit 1 ;;
               esac
 
-              json="$(nix build ".#$name.config" --no-link --print-out-paths)"
-              workdir="terraform/$name"
+              # PROFILE=local targets the Colima variants and a separate state dir.
+              # `path:` (not the git flake) so the gitignored secrets overlay is
+              # visible to Nix.
+              profile="''${PROFILE:-homelab}"
+              if [ "$profile" = local ]; then
+                attr="$name-local"
+                workdir="terraform/local/$name"
+                ref="path:."
+              else
+                attr="$name"
+                workdir="terraform/$name"
+                ref="."
+              fi
+              echo "tf: profile=$profile name=$name -> $workdir"
+
+              json="$(nix build "$ref#$attr.config" --no-link --print-out-paths)"
               mkdir -p "$workdir"
               ln -sf "$json" "$workdir/config.tf.json"
               cd "$workdir"
@@ -150,13 +176,29 @@
           );
         in
         {
-          terranix.terranixConfigurations = lib.genAttrs workloads (name: {
-            terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-            modules = [
-              ./terraform/common.nix
-              ./terraform/${name}
-            ];
-          });
+          terranix.terranixConfigurations =
+            lib.genAttrs workloads (name: {
+              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+              modules = [
+                ./terraform/common.nix
+                ./terraform/${name}
+              ];
+            })
+            // lib.listToAttrs (
+              map (
+                name:
+                lib.nameValuePair "${name}-local" {
+                  terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+                  # Separate workdir so local state never collides with the homelab.
+                  workdir = "local/${name}";
+                  modules = [
+                    ./terraform/common.nix
+                    ./terraform/local.nix
+                    ./terraform/${name}
+                  ];
+                }
+              ) workloads
+            );
 
           devShells.default = pkgs.mkShell {
             packages = [

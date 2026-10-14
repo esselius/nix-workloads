@@ -11,18 +11,25 @@ in
   # Shared Grafana Alloy agent: one process per node that ships node metrics to
   # VictoriaMetrics (remote_write) and the systemd journal to Loki. Imported by
   # every guest; the Pi hosts run an equivalent agent from nix-homelab-hosts.
-  options.local.monitoring.address = lib.mkOption {
-    type = lib.types.str;
-    default = "monitoring.int.esselius.dev";
-    description = ''
-      Monitoring workload (VictoriaMetrics + Loki) host, resolved via the
-      internal split DNS. Using the name (not the pinned 10.43.0.12) means moving
-      the workload only needs the coredns zone updated.
-    '';
+  options.local.monitoring = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Ship node metrics and journal to the monitoring workload.";
+    };
+    address = lib.mkOption {
+      type = lib.types.str;
+      default = "monitoring.${config.local.domain}";
+      description = ''
+        Monitoring workload (VictoriaMetrics + Loki) host, resolved via the
+        internal split DNS. Using the name (not the pinned 10.43.0.12) means
+        moving the workload only needs the coredns zone updated.
+      '';
+    };
   };
 
   config = {
-    services.alloy.enable = true;
+    services.alloy.enable = cfg.enable;
 
     # The alloy module reads /etc/alloy/config.alloy (a store path here, so a
     # change restarts the unit rather than hot-reloading - fine for this).

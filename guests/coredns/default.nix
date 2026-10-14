@@ -2,6 +2,7 @@
   modulesPath,
   lib,
   pkgs,
+  config,
   ...
 }:
 let
@@ -11,7 +12,7 @@ let
   # "No Reachable Authority". Instead, WireGuard clients set `DNS = 10.43.0.14`,
   # so CoreDNS answers int.esselius.dev authoritatively and forwards the rest
   # upstream. See README > Networking.
-  domain = "int.esselius.dev";
+  domain = config.local.domain;
   ns = "ns1.${domain}";
 
   # The single source of truth for internal names: vpn-bridge address per host.
