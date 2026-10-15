@@ -1,6 +1,5 @@
 {
   modulesPath,
-  lib,
   pkgs,
   pyproject-nix-lib,
   ...
@@ -106,7 +105,10 @@
       ];
   };
 
-  # Recorder backend, co-located with HA (no dedicated postgres guest).
+  # Recorder backend, co-located with HA (no dedicated postgres guest). The
+  # default dataDir (/var/lib/postgresql/${psqlSchema}) lands on the
+  # `home-assistant-postgres` volume, which terraform mounts at
+  # /var/lib/postgresql - otherwise a container recreate drops the history.
   services.postgresql = {
     enable = true;
     ensureDatabases = [ "hass" ];
@@ -118,10 +120,9 @@
     ];
   };
 
-  # Disabled until the cutover: the module's target is what pulls HA in, so
-  # drop the target from multi-user.target - HA never starts (and can't clash
-  # with adama's) until it is cut over.
-  systemd.targets.home-assistant.wantedBy = lib.mkForce [ ];
+  # HA is enabled now that `adama`'s config + recorder history were copied over
+  # (the cutover dropped `systemd.targets.home-assistant.wantedBy = [ ]`, which
+  # kept it inert while `adama` still ran HA).
 
   # `.dev` is HSTS-preloaded, so the UI must be HTTPS. nginx terminates TLS on
   # :443 (and serves the http-01 challenge on :80), proxying to HA on loopback.

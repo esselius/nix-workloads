@@ -1,7 +1,7 @@
 { lib, config, ... }:
 let
-  # Home Assistant (migrated off adama). Recorder backed by the postgres
-  # workload. Pinned on the vpn bridge; reached as
+  # Home Assistant (migrated off adama). Recorder backed by a co-located
+  # PostgreSQL (see guests/home-assistant). Pinned on the vpn bridge; reached as
   # `home-assistant.int.esselius.dev` (an A record in the coredns zone).
   staticIp = "10.43.0.19";
 in
@@ -19,6 +19,18 @@ in
     lifecycle.prevent_destroy = true;
   };
 
+  # The recorder DB gets its own volume (mounted at /var/lib/postgresql, i.e.
+  # systemd's `StateDirectory=postgresql`; the default dataDir is a versioned
+  # subdir of it). Without this the DB would live on the container rootfs and a
+  # recreate would silently drop the recorder history.
+  resource.incus_storage_volume.home_assistant_postgres = {
+    name = "home-assistant-postgres";
+    pool = config.local.storagePool;
+    content_type = "filesystem";
+
+    lifecycle.prevent_destroy = true;
+  };
+
   resource.incus_instance.home_assistant = {
     name = "home-assistant";
     image = "images:nixos/26.05";
@@ -29,7 +41,10 @@ in
     ];
     running = true;
 
-    depends_on = [ "incus_storage_volume.home_assistant_data" ];
+    depends_on = [
+      "incus_storage_volume.home_assistant_data"
+      "incus_storage_volume.home_assistant_postgres"
+    ];
 
     device = [
       {
@@ -48,6 +63,16 @@ in
           pool = config.local.storagePool;
           source = "home-assistant-data";
           path = "/var/lib/hass";
+        };
+      }
+      {
+        # Recorder DB (see the volume resource above).
+        name = "postgres";
+        type = "disk";
+        properties = {
+          pool = config.local.storagePool;
+          source = "home-assistant-postgres";
+          path = "/var/lib/postgresql";
         };
       }
     ];
