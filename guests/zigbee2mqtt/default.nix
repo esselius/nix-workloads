@@ -1,7 +1,6 @@
 {
   modulesPath,
   config,
-  lib,
   pkgs,
   ...
 }:
@@ -87,14 +86,9 @@
     };
   };
 
-  # Disabled until the coordinator is present: not wanted by multi-user.target,
-  # so it never starts (or restart-loops) at boot. The unit stays so
-  # `systemctl start zigbee2mqtt` works once the dongle is on this host.
-  # ConditionPathExists is belt-and-braces for a manual start without it.
-  systemd.services.zigbee2mqtt = {
-    wantedBy = lib.mkForce [ ];
-    unitConfig.ConditionPathExists = "/dev/ttyACM0";
-  };
+  # Enabled now that the coordinator has moved here. ConditionPathExists keeps
+  # the unit from starting (or restart-looping) if the dongle is ever absent.
+  systemd.services.zigbee2mqtt.unitConfig.ConditionPathExists = "/dev/ttyACM0";
 
   services.zigbee2mqtt = {
     enable = true;
