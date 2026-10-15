@@ -352,60 +352,95 @@ paths stay hot.
 
 ## Migration plan (from `adama`)
 
-Ordered by the critical path (lights/heating/MQTT first):
+Ordered by the critical path (lights/heating/MQTT first). Status as of the last
+cutover session:
 
-| `adama` service | Type | Notes |
-|-----------------|------|-------|
-| Mosquitto (MQTT) | container | broker everything else depends on |
-| Node-RED | container | automation flows |
-| PostgreSQL | container | Home Assistant recorder backend |
-| Home Assistant | container | recorder -> a co-located PostgreSQL |
-| Zigbee2MQTT | container | needs the USB coordinator; see Known risks |
-| Prometheus / Grafana | container | monitoring, not critical path |
-| Authentik / nginx / step-ca | container | web auth + TLS front door |
+| `adama` service | Workload | Status |
+|-----------------|----------|--------|
+| Mosquitto (MQTT) | `mosquitto` | done - `adama` broker disabled |
+| Node-RED | `node-red` | done - retired on `adama` |
+| Prometheus / Grafana | `monitoring` | done - VictoriaMetrics + Loki + Grafana |
+| Authentik | `kanidm` | done - retired on `adama` |
+| nginx / step-ca | `step-ca` | done - per-guest nginx + `step-ca` workload |
+| PostgreSQL (recorder) | `home-assistant` | done - co-located, own volume |
+| Home Assistant | `home-assistant` | done - cut over 2026-10-15 |
+| Zigbee2MQTT | `zigbee2mqtt` | done - cut over 2026-10-15 |
 
-## Pending cutover: Zigbee2MQTT
+With every workload cut over, `adama`'s `home-assistant`, `postgresql`,
+`zigbee2mqtt`, `oauth2-proxy`, `nginx` and `step-ca` have no consumers and can be
+retired (keep `alloy`, the monitoring agent).
 
-The `zigbee2mqtt` workload is scaffolded and deployed, but its unit is
-**disabled** (`wantedBy = [ ]`) and gated on `ConditionPathExists=/dev/ttyACM0`
-until the USB coordinator is physically moved from `adama` to `rpi5-8gb`.
-Remaining steps:
+## Zigbee2MQTT (cut over)
 
-1. Move the SONOFF ZBDongle-E from `adama` to `rpi5-8gb`; the `unix-hotplug`
+The `zigbee2mqtt` workload runs on `rpi5-8gb` (the board the USB coordinator is
+plugged into). The unit stays gated on `ConditionPathExists=/dev/ttyACM0` so it
+never restart-loops if the dongle is absent. Cutover from `adama`:
+
+1. Stop `adama`'s zigbee2mqtt, then copy `/var/lib/zigbee2mqtt` (`database.db`,
+   `coordinator_backup.json`, `state.json`, `devices.yaml`, `groups.yaml`,
+   `device_icons/`) into the `zigbee2mqtt-data` volume - **not**
+   `configuration.yaml`, which the module renders from `services.zigbee2mqtt.settings`.
+2. Move the SONOFF ZBDongle-E from `adama` to `rpi5-8gb`; the `unix-hotplug`
    device (`1a86:55d4`) surfaces it as `/dev/ttyACM0`.
-2. `systemctl start zigbee2mqtt` to start it (it's disabled at boot for now -
-   remove the `wantedBy` override in `guests/zigbee2mqtt` to re-enable).
-3. Copy z2m state from `adama` (`/var/lib/zigbee2mqtt`: `database.db` + the
-   coordinator backup) into the `zigbee2mqtt-data` volume so device names and
-   pairings survive (the network key is already in sops).
-4. Verify devices report on `zigbee2mqtt.int.esselius.dev`, then stop `adama`'s
-   zigbee2mqtt and remove its vhost, DNS entry and secret.
+3. Re-enable the unit (drop the `wantedBy = lib.mkForce [ ]` override in
+   `guests/zigbee2mqtt`), deploy, then `systemctl start zigbee2mqtt`.
+4. Verify: `zigbee2mqtt/bridge/state` is `{"state":"online"}` on the broker, the
+   frontend at `zigbee2mqtt.int.esselius.dev` (oauth2-proxy -> Kanidm) loads, and
+   HA entities update.
 
-Note: the Kanidm `oauth2-proxy` client now points at
-`zigbee2mqtt.int.esselius.dev`, so `adama`'s z2m *frontend login* is broken
-until the cutover - the daemon keeps running and automations are unaffected.
+Remaining: retire `adama`'s zigbee2mqtt + oauth2-proxy (its vhost, DNS entry and
+age secret).
 
-## Pending cutover: Home Assistant
+## Home Assistant (cut over)
 
-The `home-assistant` workload is scaffolded and deployed but **disabled** (the
-module's target is dropped from `multi-user.target`), so it can't clash with
-`adama`'s HA. Remaining steps:
+The `home-assistant` workload runs on `rpi5-8gb` with a co-located PostgreSQL
+recorder. Cutover from `adama` (2026-10-15):
 
-1. Copy `adama`'s HA config dir (`/var/lib/hass`: `configuration.yaml`,
-   `.storage`, `custom_components`, ...) into the `home-assistant-data` volume.
-2. Re-enable HA (remove the `systemd.targets.home-assistant.wantedBy` override
-   in `guests/home-assistant`) and redeploy /
-   `systemctl start home-assistant.target`.
-3. Verify the UI at `home-assistant.int.esselius.dev` and that the recorder
-   writes to the local PostgreSQL, then stop `adama`'s HA and remove its vhost
-   and DNS entry.
+1. Stop `adama`'s HA so `pg_dump` and the config copy are consistent.
+2. Copy `adama`'s HA config dir into the `home-assistant-data` volume: everything
+   under `/var/lib/hass` **except** the generated `configuration.yaml` (the
+   module renders that from `services.home-assistant.config`) - so `.storage`,
+   `custom_components`, `blueprints`, ... . `hass` is uid 286 on both sides.
+3. Migrate the recorder history (see below) into the guest's co-located
+   PostgreSQL. It lives on the `home-assistant-postgres` volume
+   (`/var/lib/postgresql`), so a container recreate keeps it.
+4. Re-enable HA (drop the `systemd.targets.home-assistant.wantedBy` override in
+   `guests/home-assistant`), redeploy, and it starts with the target.
+5. Verify the UI at `home-assistant.int.esselius.dev` and that the recorder
+   writes to the local PostgreSQL.
+
+Remaining: retire `adama`'s HA + postgres (its vhost and DNS entry).
+
+### Version pin (band-aid)
+
+`adama` ran HA 2026.9.x from nixpkgs-unstable, but this repo pins nixos-26.05
+(HA 2026.5.x) - a downgrade a newer `.storage` may not load. So the
+`home-assistant` workload overlays **only the HA package** (and its Python
+closure) from a pinned unstable revision (`nixpkgs-ha` in `flake.nix`), leaving
+everything else on 26.05. The overlay - rather than setting
+`services.home-assistant.package` - is what keeps the module's
+`buildHomeAssistantComponent` and our `pkgs/*.nix` custom components on the same
+HA/python. Drop the input and `homeAssistantOverlay` (`flake.nix`) once NixOS
+26.11 ships HA 2026.9+.
+
+### Recorder history
+
+The recorder DB is ~3 GiB on `adama`. To carry it over:
+
+```fish
+# on adama
+sudo -u postgres pg_dump -Fc hass > /tmp/hass.dump
+# to the guest (via its eth0 address), then restore as the hass-owning role
+incus file push /tmp/hass.dump home-assistant/tmp/hass.dump
+incus exec home-assistant -- sudo -u postgres pg_restore -d hass --clean /tmp/hass.dump
+```
 
 Notes:
 
-- The recorder DB starts empty; importing `adama`'s Postgres history is optional
-  (`pg_dump`/`pg_restore` into the guest).
-- This repo pins nixpkgs 26.05 (Home Assistant 2026.5.x), whereas `cfg` ran HA
-  from nixpkgs-unstable (2026.9.x) - check the config after cutover.
+- `cfg` ran HA from nixpkgs-unstable; the overlay in the workload matches the
+  version (see above), but check the config after cutover regardless.
+- Only `hass` needs restoring; `adama`'s `authentik`/`grafana` databases are
+  stale.
 
 ## Known risks
 
