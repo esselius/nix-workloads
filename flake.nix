@@ -22,6 +22,16 @@
       url = "github:pyproject-nix/pyproject.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Home Assistant band-aid: `adama` ran HA from nixpkgs-unstable (2026.9.x),
+    # but this repo pins nixos-26.05 (HA 2026.5.x). Copying a newer `.storage` /
+    # config onto an older HA is a downgrade, so the `home-assistant` workload
+    # overlays only HA (and its Python closure) from this pinned unstable
+    # revision, leaving everything else on the 26.05 pin. Drop this input and
+    # the overlay once NixOS 26.11 ships HA 2026.9+. See README.
+    nixpkgs-ha = {
+      url = "github:NixOS/nixpkgs/55ba7f49ef2962b42cbd126522b7df5f95037679";
+    };
   };
 
   outputs =
@@ -29,12 +39,26 @@
       self,
       flake-parts,
       nixpkgs,
+      nixpkgs-ha,
       terranix,
       sops-nix,
       ...
     }:
     let
       lib = nixpkgs.lib;
+
+      # The HA package (with its own Python closure, e.g. python314Packages)
+      # from the pinned unstable revision. Overlaying the single attribute -
+      # rather than setting `services.home-assistant.package` - keeps the
+      # module's `buildHomeAssistantComponent` and our custom components on the
+      # same HA/python, since they resolve `home-assistant` from `pkgs`.
+      haPkgs = nixpkgs-ha.legacyPackages.aarch64-linux;
+      homeAssistantOverlay = _final: _prev: {
+        home-assistant = haPkgs.home-assistant;
+      };
+      homeAssistantOverlayModule = {
+        nixpkgs.overlays = [ homeAssistantOverlay ];
+      };
 
       # Single source of truth: every workload is a sibling directory under
       # guests/ (mirrored by terraform/<name>/). Adding a workload means
@@ -58,6 +82,7 @@
           specialArgs = {
             pyproject-nix-lib = inputs.pyproject-nix.lib;
           };
+          extraModules = [ homeAssistantOverlayModule ];
         };
       };
       metaFor = name: guestMeta.${name} or { sops = true; };
@@ -71,13 +96,16 @@
         nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
           specialArgs = meta.specialArgs or { };
-          modules = lib.optionals (meta.sops or true) [ sops-nix.nixosModules.sops ] ++ [
-            ./modules/local.nix
-            ./modules/lxc-credentials.nix
-            ./modules/monitoring-agent.nix
-            ./modules/nix-cache.nix
-            ./guests/${name}
-          ];
+          modules =
+            lib.optionals (meta.sops or true) [ sops-nix.nixosModules.sops ]
+            ++ meta.extraModules or [ ]
+            ++ [
+              ./modules/local.nix
+              ./modules/lxc-credentials.nix
+              ./modules/monitoring-agent.nix
+              ./modules/nix-cache.nix
+              ./guests/${name}
+            ];
         };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {

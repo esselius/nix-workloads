@@ -2,7 +2,6 @@
   fetchFromGitHub,
   buildHomeAssistantComponent,
   home-assistant,
-  python314Packages,
   pyproject-nix-lib,
 }:
 
@@ -18,9 +17,15 @@ buildHomeAssistantComponent rec {
     hash = "sha256-psRr3cJ/sK/Z0dgB27GbW0qAHH2vJt+TdxqDB+Zhkc0=";
   };
 
+  # Build the deps from HA's own Python set (`home-assistant.python3Packages`,
+  # i.e. the Python HA runs on), not a separate `pythonNNPackages`. Mixing sets
+  # trips the custom-component check when HA is overlaid from another nixpkgs
+  # (see the `nixpkgs-ha` input in flake.nix).
   dependencies = [
-    (python314Packages.callPackage ./pyeasee.nix { })
-    (python314Packages.callPackage ./pysignalr.nix { inherit pyproject-nix-lib; })
+    (home-assistant.python3Packages.callPackage ./pyeasee.nix { })
+    (home-assistant.python3Packages.callPackage ./pysignalr.nix {
+      inherit pyproject-nix-lib;
+    })
   ];
   nativeBuildInputs = [
     home-assistant.python3Packages.bump2version
