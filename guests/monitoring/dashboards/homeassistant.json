@@ -1,0 +1,137 @@
+{
+  "uid": "homeassistant",
+  "title": "Home Assistant",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Reachable",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "up{job=\"home-assistant\"}", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Available entities",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 5, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "count(hass_entity_available)", "instant": true } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "State changes / s",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 5, "x": 9, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(hass_state_change_total[5m]))", "instant": true } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Lights on",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "count(hass_light_brightness_percent > 0) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Recorder / scrape samples",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "scrape_samples_scraped{job=\"home-assistant\"}", "instant": true } ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Entities by domain",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "count by (domain) (hass_entity_available)", "legendFormat": "{{domain}}" } ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "State change rate",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(hass_state_change_total[5m]))", "legendFormat": "state changes" } ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Process memory",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "process_resident_memory_bytes{job=\"home-assistant\"}", "legendFormat": "RSS" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Process CPU",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(process_cpu_seconds_total{job=\"home-assistant\"}[5m])", "legendFormat": "CPU" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Temperature sensors",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "hass_sensor_temperature_celsius", "legendFormat": "{{friendly_name}}" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Humidity sensors",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "hass_sensor_humidity_percent", "legendFormat": "{{friendly_name}}" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Scrape duration",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "scrape_duration_seconds{job=\"home-assistant\"}", "legendFormat": "scrape" }
+      ]
+    }
+  ]
+}

@@ -591,6 +591,176 @@ in
               labels.severity = "warning";
               annotations.summary = "{{ $labels.name }} failed on {{ $labels.host }}";
             }
+            {
+              uid = "home-assistant-down";
+              title = "Home Assistant down";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 300;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    expr = "up{job=\"home-assistant\"}";
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        evaluator = {
+                          type = "lt";
+                          params = [ 1 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              noDataState = "OK";
+              execErrState = "Alerting";
+              "for" = "5m";
+              labels.severity = "critical";
+              annotations.summary = "Home Assistant metrics scrape failed (service down or /api/prometheus unreadable)";
+            }
+            {
+              uid = "zigbee2mqtt-bridge-offline";
+              title = "Zigbee2MQTT bridge offline";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 300;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    expr = "mqtt_state{topic=\"zigbee2mqtt_bridge_state\"}";
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        evaluator = {
+                          type = "lt";
+                          params = [ 1 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              # No series means the broker/exporter is already covered by its
+              # own rule; don't double-alert here.
+              noDataState = "OK";
+              execErrState = "Alerting";
+              "for" = "5m";
+              labels.severity = "critical";
+              annotations.summary = "Zigbee2MQTT reports the bridge offline";
+            }
+            {
+              uid = "zigbee2mqtt-exporter-down";
+              title = "Zigbee2MQTT exporter down";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 300;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    expr = "up{job=\"zigbee2mqtt\"}";
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        evaluator = {
+                          type = "lt";
+                          params = [ 1 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              noDataState = "OK";
+              execErrState = "Alerting";
+              "for" = "5m";
+              labels.severity = "warning";
+              annotations.summary = "Zigbee2MQTT metrics exporter is unreachable";
+            }
           ];
         }
       ];

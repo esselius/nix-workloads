@@ -65,6 +65,13 @@
       mqtt_password = { };
       oauth2_proxy_client_secret = { };
       oauth2_proxy_cookie_secret = { };
+      # The mqtt-exporter below authenticates as the broker's shared `exporter`
+      # user; its password lives in secrets/mosquitto.yaml, which every guest is
+      # already a recipient of (single creation rule in .sops.yaml).
+      exporter_password = {
+        sopsFile = ../../secrets/mosquitto.yaml;
+        key = "mqtt_exporter";
+      };
     };
     templates = {
       "z2m.yaml" = {
@@ -81,6 +88,19 @@
         content = ''
           OAUTH2_PROXY_CLIENT_SECRET=${config.sops.placeholder.oauth2_proxy_client_secret}
           OAUTH2_PROXY_COOKIE_SECRET=${config.sops.placeholder.oauth2_proxy_cookie_secret}
+        '';
+      };
+      # Read by systemd (as root) before dropping to the exporter's DynamicUser,
+      # so the broker password never lands in the process environment of a
+      # world-readable unit or in the Nix store. (mqtt-exporter's variable is
+      # MQTT_USERNAME - unlike the Go mosquitto-exporter's MQTT_USER.) The
+      # restart trigger is needed because the unit points at a stable path, so
+      # a credential change alone would not restart the service.
+      "mqtt-exporter.env" = {
+        restartUnits = [ "mqtt-exporter.service" ];
+        content = ''
+          MQTT_USERNAME=exporter
+          MQTT_PASSWORD=${config.sops.placeholder.exporter_password}
         '';
       };
     };
@@ -172,6 +192,51 @@
       };
     };
   };
+
+  # Application metrics for the Zigbee dashboard: mqtt-exporter subscribes to
+  # the z2m topics on the broker, flattens each device state and `bridge/state`
+  # payload into Prometheus gauges, and serves them on loopback. The Alloy agent
+  # scrapes that (extra alloy file) and remote-writes to the monitoring workload.
+  # The broker's `exporter` account is granted read on `zigbee2mqtt/#` in the
+  # mosquitto workload.
+  systemd.services.mqtt-exporter = {
+    description = "Prometheus exporter for Zigbee2MQTT (via MQTT)";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.mqtt-exporter}/bin/mqtt-exporter";
+      EnvironmentFile = config.sops.templates."mqtt-exporter.env".path;
+      Environment = [
+        "MQTT_ADDRESS=mosquitto.${config.local.domain}"
+        "MQTT_PORT=1883"
+        # Device state (`zigbee2mqtt/<name>`), device availability, and the
+        # bridge online state - deliberately NOT `zigbee2mqtt/#`, whose retained
+        # `bridge/devices` / `bridge/health` payloads (nested per-device objects)
+        # would mint a metric *name* per device and exhaust MAX_METRICS.
+        "MQTT_TOPIC=zigbee2mqtt/+,zigbee2mqtt/+/availability,zigbee2mqtt/bridge/state"
+        # Collapse Zigbee2MQTT's `<device>/availability` topic into the device's
+        # own topic as `mqtt_zigbee_availability` instead of a second topic per
+        # device (legacy payloads are already off in the z2m settings above).
+        "ZIGBEE2MQTT_AVAILABILITY=True"
+        "PROMETHEUS_ADDRESS=127.0.0.1"
+        "PROMETHEUS_PORT=9000"
+        # Every numeric field of every device becomes a series; cap the count so
+        # a misbehaving payload can't take down the exporter.
+        "MAX_METRICS=2000"
+      ];
+      DynamicUser = true;
+      Restart = "on-failure";
+    };
+  };
+
+  environment.etc."alloy/zigbee2mqtt.alloy".text = ''
+    prometheus.scrape "zigbee2mqtt" {
+      targets    = [{ __address__ = "127.0.0.1:9000" }]
+      job_name   = "zigbee2mqtt"
+      forward_to = [prometheus.relabel.host.receiver]
+    }
+  '';
 
   # nginx (80 for the ACME challenge, 443 for the frontend) and SSH - only on
   # the private backplane.

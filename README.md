@@ -442,6 +442,36 @@ Notes:
 - Only `hass` needs restoring; `adama`'s `authentik`/`grafana` databases are
   stale.
 
+## Monitoring (app metrics + dashboards)
+
+Beyond the node + journal streams every guest ships through
+`modules/monitoring-agent.nix`, the two smart-home apps expose their own
+metrics, which the `monitoring` workload's Grafana picks up:
+
+- **Home Assistant.** `services.home-assistant.config.prometheus` serves
+  `/api/prometheus` (auth off - loopback only) with a `hass` namespace, so
+  entities are `hass_*` (`hass_entity_available`, `hass_state_change_total`,
+  `hass_sensor_temperature_celsius`, `hass_light_brightness_percent`, ...). The
+  guest adds `alloy/home-assistant.alloy`, scraping `127.0.0.1:8123` with
+  `job="home-assistant"`, through the shared `prometheus.relabel.host` receiver.
+- **Zigbee2MQTT.** Its frontend has no Prometheus endpoint, so the guest runs
+  `mqtt-exporter` (`zigbee2mqtt` job): it subscribes to the device-state topics
+  (`zigbee2mqtt/+`), their `/availability`, and `bridge/state` as the broker's
+  `exporter` user, flattens each payload into gauges (`mqtt_temperature`,
+  `mqtt_battery`, `mqtt_linkquality`, `mqtt_zigbee_availability`,
+  `mqtt_state{topic="zigbee2mqtt_bridge_state"}`, ...) and serves them on
+  `127.0.0.1:9000`, scraped by the guest's Alloy. (It deliberately does not
+  subscribe to `zigbee2mqtt/#`: the retained `bridge/devices` / `bridge/health`
+  payloads are nested per-device objects that would mint a metric name per
+  device and exhaust the exporter's cap.) The broker grants `exporter` read on
+  `zigbee2mqtt/#`; its password comes from `secrets/mosquitto.yaml` (every guest
+  is a recipient).
+
+Dashboards (`guests/monitoring/dashboards/`, folder "Homelab"):
+`homeassistant.json` and `zigbee2mqtt.json`. Alerts (`provision.alerting.rules`):
+`home-assistant-down`, `zigbee2mqtt-bridge-offline`, `zigbee2mqtt-exporter-down`
+- all routed to ntfy like the rest.
+
 ## Known risks
 
 - **Zigbee coordinator**: the dongle is physical, so the instance must run on

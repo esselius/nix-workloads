@@ -93,7 +93,13 @@
       # Recorder -> local PostgreSQL over the unix socket (peer auth as the
       # `hass` user). SQLite is too slow for the recorder.
       recorder.db_url = "postgresql://@/hass";
-      prometheus.requires_auth = false;
+      # Serve Prometheus metrics on /api/prometheus without auth (the endpoint
+      # is only reachable on the guest's loopback) and pin the metric prefix so
+      # the dashboard/alerts don't depend on the integration's default.
+      prometheus = {
+        requires_auth = false;
+        namespace = "hass";
+      };
     };
     extraPackages =
       p: with p; [
@@ -148,6 +154,19 @@
       };
     };
   };
+
+  # Application metrics for the Home Assistant dashboard: the prometheus
+  # integration above serves them on /api/prometheus; the Alloy agent scrapes
+  # loopback and remote-writes to the monitoring workload. Entity metrics carry
+  # the `hass_` prefix set by the namespace.
+  environment.etc."alloy/home-assistant.alloy".text = ''
+    prometheus.scrape "home_assistant" {
+      targets      = [{ __address__ = "127.0.0.1:8123" }]
+      metrics_path = "/api/prometheus"
+      job_name     = "home-assistant"
+      forward_to   = [prometheus.relabel.host.receiver]
+    }
+  '';
 
   # nginx (80 for the ACME challenge, 443 for the UI) and SSH - only on the
   # private backplane.

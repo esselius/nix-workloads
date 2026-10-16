@@ -120,10 +120,14 @@ in
           hass.passwordFile = config.sops.secrets.mqtt_hass.path;
           nr.passwordFile = config.sops.secrets.mqtt_nr.path;
           p1ib.passwordFile = config.sops.secrets.mqtt_p1ib.path;
-          # The exporter needs $SYS read access (`#` does not match `$SYS`).
+          # The exporter needs $SYS read access (`#` does not match `$SYS`) and
+          # reads the Zigbee2MQTT topics for the mqtt-exporter in that guest.
           exporter = {
             passwordFile = config.sops.secrets.mqtt_exporter.path;
-            acl = [ "$SYS/#" ];
+            acl = [
+              "$SYS/#"
+              "zigbee2mqtt/#"
+            ];
           };
         };
       }

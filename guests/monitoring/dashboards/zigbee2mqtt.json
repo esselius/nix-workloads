@@ -1,0 +1,134 @@
+{
+  "uid": "zigbee2mqtt",
+  "title": "Zigbee2MQTT",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Exporter",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "up{job=\"zigbee2mqtt\"}", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Bridge state",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "offline", "color": "red" }, "1": { "text": "online", "color": "green" } } }
+          ]
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "mqtt_state{topic=\"zigbee2mqtt_bridge_state\"}", "instant": true } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Devices",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 5, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "count(count by (topic) (mqtt_linkquality))", "instant": true } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Available",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 13, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "count(mqtt_zigbee_availability == 1)", "instant": true } ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Unavailable",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 4, "x": 17, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "count(mqtt_zigbee_availability == 0) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Messages / s",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 3, "x": 21, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(mqtt_message_total[5m]))", "instant": true } ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Link quality",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "mqtt_linkquality", "legendFormat": "{{topic}}" } ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Battery level",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "mqtt_battery", "legendFormat": "{{topic}}" } ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Message rate by device",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum by (topic) (rate(mqtt_message_total[5m]))", "legendFormat": "{{topic}}" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Device availability",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "mqtt_zigbee_availability", "legendFormat": "{{topic}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Lowest device batteries",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "bottomk(10, mqtt_battery)", "legendFormat": "{{topic}}" }
+      ]
+    }
+  ]
+}
