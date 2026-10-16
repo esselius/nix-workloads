@@ -54,8 +54,8 @@ in
         # The USB coordinator (SONOFF ZBDongle-E, 1a86:55d4). unix-hotplug is a
         # container-only device type: incus watches udev and passes the resulting
         # character device (/dev/ttyACM0) into the container, following replugs.
-        # The instance starts fine without it (the dongle lives on adama until
-        # it is physically moved here).
+        # The instance starts fine without it, so a replug or a board move never
+        # restart-loops the unit.
         name = "coordinator";
         type = "unix-hotplug";
         properties = {

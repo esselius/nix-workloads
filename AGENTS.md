@@ -6,9 +6,11 @@ incus daemon or the Pi hosts - that lives in
 `github.com/esselius/nix-homelab-hosts`. Here we only declare the instances
 (terranix -> OpenTofu) and the NixOS systems that run inside them.
 
-Goal: offload the critical smart-home services currently running on the `adama`
-host of `github.com/esselius/cfg` into incus instances, so `adama` can be
-rebuilt/replaced without taking lights, heating, or MQTT down.
+These workloads are the critical smart-home services (lights, heating, MQTT)
+that formerly ran on the `adama` host of `github.com/esselius/cfg`, now incus
+instances here. `adama` has been retired; this repo is their source of truth, so
+a rebuild or replacement of `rpi5-8gb` must not take lights, heating, or MQTT
+down.
 
 - Three layers, keep them separate:
   1. **Base image** - the upstream `images:nixos/26.05` incus image.

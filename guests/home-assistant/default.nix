@@ -126,9 +126,8 @@
     ];
   };
 
-  # HA is enabled now that `adama`'s config + recorder history were copied over
-  # (the cutover dropped `systemd.targets.home-assistant.wantedBy = [ ]`, which
-  # kept it inert while `adama` still ran HA).
+  # HA and its recorder (the co-located PostgreSQL above) start together with
+  # the `home-assistant` target.
 
   # `.dev` is HSTS-preloaded, so the UI must be HTTPS. nginx terminates TLS on
   # :443 (and serves the http-01 challenge on :80), proxying to HA on loopback.
