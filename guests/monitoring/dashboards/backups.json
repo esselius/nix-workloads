@@ -1,0 +1,124 @@
+{
+  "uid": "backups",
+  "title": "Backups",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Hosts backed up",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "count(max by (host) (restic_backup_timestamp))", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Stale > 48h",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "count((time() - max by (host) (restic_backup_timestamp)) > 172800) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Check failures",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "count(restic_check_success == 0) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Total repository size",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(restic_size_total)", "instant": true } ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Backup age",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "time() - max by (host) (restic_backup_timestamp)", "legendFormat": "{{host}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Repository size",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "restic_size_total", "legendFormat": "{{host}}" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Per-host status",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "max by (host) (restic_backup_timestamp)", "format": "table", "instant": true },
+        { "refId": "B", "expr": "max by (host) (restic_snapshots_total)", "format": "table", "instant": true },
+        { "refId": "C", "expr": "max by (host) (restic_size_total)", "format": "table", "instant": true },
+        { "refId": "D", "expr": "max by (host) (restic_check_success)", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Exporter scrape duration",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "restic_scrape_duration_seconds", "legendFormat": "{{host}}" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Exporter up",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "up{job=\"restic-exporter\"}", "legendFormat": "{{host}}" }
+      ]
+    }
+  ]
+}

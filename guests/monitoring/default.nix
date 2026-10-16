@@ -765,6 +765,119 @@ in
               labels.severity = "warning";
               annotations.summary = "Zigbee2MQTT metrics exporter is unreachable";
             }
+            {
+              uid = "restic-backup-stale";
+              title = "Backup stale";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 300;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    # Seconds since the newest snapshot for this host (48h limit).
+                    expr = "time() - max by (host) (restic_backup_timestamp)";
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        evaluator = {
+                          type = "gt";
+                          params = [ 172800 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              noDataState = "OK";
+              execErrState = "Alerting";
+              "for" = "15m";
+              labels.severity = "critical";
+              annotations.summary = "{{ $labels.host }} has no backup newer than 48h";
+            }
+            {
+              uid = "restic-check-failed";
+              title = "Backup integrity check failed";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 300;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    expr = "restic_check_success";
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        evaluator = {
+                          type = "lt";
+                          params = [ 1 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              noDataState = "OK";
+              execErrState = "Alerting";
+              "for" = "15m";
+              labels.severity = "critical";
+              annotations.summary = "{{ $labels.host }} restic repository check failed";
+            }
           ];
         }
       ];

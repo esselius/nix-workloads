@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
@@ -80,5 +81,42 @@ in
         Persistent = true;
       };
     };
+
+    # Backup health for the dashboards/alerts: this guest's repo is inspected
+    # (restic snapshots/check/stats) and exposed on loopback, scraped by the
+    # same Alloy agent. Hand-rolled rather than services.prometheus.exporters.restic
+    # because that module passes the repo password through a systemd credential,
+    # which the distrobuilder shim strips without `local.lxc.allowSystemdCredentials`
+    # - here the password is just an env var from a sops secret.
+    systemd.services.restic-exporter = {
+      description = "Prometheus exporter for the guest's restic repository";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
+      path = [ pkgs.restic ];
+      environment = {
+        RESTIC_REPOSITORY = "${cfg.repository}/${hostName}";
+        RESTIC_PASSWORD_FILE = config.sops.secrets.restic_password.path;
+        RESTIC_CACHE_DIR = "/var/cache/restic-exporter";
+        LISTEN_ADDRESS = "127.0.0.1";
+        LISTEN_PORT = "9753";
+        # Inspecting the repo is not free; 6h is plenty for a daily backup.
+        REFRESH_INTERVAL = "21600";
+      };
+      serviceConfig = {
+        ExecStart = "${pkgs.prometheus-restic-exporter}/bin/restic-exporter.py";
+        EnvironmentFile = config.sops.templates."restic-rest.env".path;
+        CacheDirectory = "restic-exporter";
+        Restart = "on-failure";
+      };
+    };
+
+    environment.etc."alloy/restic-exporter.alloy".text = ''
+      prometheus.scrape "restic_exporter" {
+        targets    = [{ __address__ = "127.0.0.1:9753" }]
+        job_name   = "restic-exporter"
+        forward_to = [prometheus.relabel.host.receiver]
+      }
+    '';
   };
 }

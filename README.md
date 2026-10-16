@@ -433,6 +433,18 @@ incus exec home-assistant -- restic-system snapshots
 incus exec home-assistant -- restic-system restore latest --target /tmp/restore
 ```
 
+**Monitoring.** Each backed-up guest also runs `prometheus-restic-exporter` (the
+`restic-exporter` job) against its own repo; the Alloy agents scrape it into
+VictoriaMetrics. The "Backups" Grafana dashboard shows last-backup age, repo
+size, snapshot counts and check status, and two alerts - `Backup stale` (>48h)
+and `Backup integrity check failed` - route to ntfy like the rest.
+
+**Browsing.** The `backrest` workload
+(`https://backrest.int.esselius.dev`, oauth2-proxy -> Kanidm, its own admin
+account created on first visit) is a web UI over the same repos. Add each as
+`rest:http://backup.int.esselius.dev:8000/<host>` with the shared repository
+password from `secrets/backup.yaml` to browse and restore snapshots.
+
 Caveat: this is **local only** - the repositories live on `rpi5-8gb`'s pool, so a
 board loss loses the backups too. Add an offsite rclone/B2 copy of the
 `backup-data` repo when that matters (see Known risks).
