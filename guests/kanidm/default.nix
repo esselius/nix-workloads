@@ -54,6 +54,9 @@
     max-jobs = 0;
   };
 
+  # Back up the identity database (users, groups, oauth2 clients).
+  local.backup.paths = [ "/var/lib/kanidm" ];
+
   # Kanidm mandates TLS on every connection, so it serves HTTPS itself with a
   # cert from the internal step-ca. Trust the Esselius root to talk to step-ca
   # (and so clients trust the issued cert).
@@ -91,6 +94,10 @@
         mode = "0400";
       };
       oauth2_proxy_secret = {
+        owner = "kanidm";
+        mode = "0400";
+      };
+      homepage_oidc_secret = {
         owner = "kanidm";
         mode = "0400";
       };
@@ -189,6 +196,19 @@
         originUrl = "https://zigbee2mqtt.int.esselius.dev/oauth2/callback";
         originLanding = "https://zigbee2mqtt.int.esselius.dev/";
         basicSecretFile = config.sops.secrets.oauth2_proxy_secret.path;
+        scopeMaps.homelab_users = [
+          "openid"
+          "email"
+          "profile"
+          "groups"
+        ];
+      };
+
+      systems.oauth2.homepage = {
+        displayName = "Homepage";
+        originUrl = "https://homepage.int.esselius.dev/oauth2/callback";
+        originLanding = "https://homepage.int.esselius.dev/";
+        basicSecretFile = config.sops.secrets.homepage_oidc_secret.path;
         scopeMaps.homelab_users = [
           "openid"
           "email"

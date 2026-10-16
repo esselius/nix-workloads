@@ -119,6 +119,10 @@ in
     max-jobs = 0;
   };
 
+  # Back up Grafana's state (users, API keys, annotations). VictoriaMetrics/Loki
+  # history is regenerable and large, so it is deliberately left out.
+  local.backup.paths = [ "/var/lib/monitoring/grafana" ];
+
   # Grafana reads both via its file provider (`$__file{}` in the settings below),
   # so they stay out of the world-readable Nix store. Read by the grafana user.
   sops = {

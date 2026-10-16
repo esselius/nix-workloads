@@ -31,6 +31,10 @@ let
     home-assistant = "10.43.0.19";
     # The Attic binary cache workload (serves cache.int.esselius.dev).
     cache = "10.43.0.20";
+    # Restic REST server all guests push backups to.
+    backup = "10.43.0.18";
+    # Landing page.
+    homepage = "10.43.0.21";
   };
 
   # Non-HTTP service discovery (RFC 2782). Clients that honour SRV can find the

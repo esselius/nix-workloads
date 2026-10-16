@@ -1,5 +1,7 @@
 {
   modulesPath,
+  config,
+  lib,
   pkgs,
   pyproject-nix-lib,
   ...
@@ -53,6 +55,24 @@
     # container fails.
     max-jobs = 0;
   };
+
+  # sops key for the shared restic backup credentials (see modules/backup.nix).
+  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+
+  # Back up the HA config dir plus a consistent pg_dump of the recorder.
+  local.backup = {
+    paths = [
+      "/var/lib/hass"
+      "/var/backup"
+    ];
+    prepareCommand = ''
+      ${pkgs.util-linux}/bin/runuser -u postgres -- \
+        ${config.services.postgresql.package}/bin/pg_dump -Fc -f /var/backup/hass.dump hass
+    '';
+    cleanupCommand = "rm -f /var/backup/hass.dump";
+  };
+  # postgres writes the dump here (restic runs as root and can read it anyway).
+  systemd.tmpfiles.rules = [ "d /var/backup 0700 postgres postgres -" ];
 
   services.home-assistant = {
     enable = true;

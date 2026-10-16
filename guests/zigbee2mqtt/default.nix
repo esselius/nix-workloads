@@ -54,6 +54,9 @@
     max-jobs = 0;
   };
 
+  # Back up the Zigbee device database + coordinator backup.
+  local.backup.paths = [ "/var/lib/zigbee2mqtt" ];
+
   # Zigbee2MQTT reads the network key and the MQTT password from a rendered
   # YAML (sops template, never the Nix store). The oauth2-proxy secrets are
   # rendered into an EnvironmentFile.

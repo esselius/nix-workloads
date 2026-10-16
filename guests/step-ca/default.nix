@@ -59,6 +59,10 @@
     max-jobs = 0;
   };
 
+  # Back up the CA database + provisioners (the intermediate key itself is also
+  # in sops).
+  local.backup.paths = [ "/var/lib/step-ca" ];
+
   # The Esselius intermediate CA is reused, not regenerated: its cert is public
   # (certs/, committed) and its password-encrypted key + the password come from
   # sops, so this CA and adama's share one trust chain (both issued under the

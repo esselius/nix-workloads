@@ -411,6 +411,39 @@ Dashboards (`guests/monitoring/dashboards/`, folder "Homelab"):
 `home-assistant-down`, `zigbee2mqtt-bridge-offline`, `zigbee2mqtt-exporter-down`
 - all routed to ntfy like the rest.
 
+## Backups (restic)
+
+The `backup` workload runs a restic REST server (`services.restic.server`, port
+8000 on the private backplane) with per-host repositories on the `backup-data`
+volume. Guests opt in through the shared `modules/backup.nix`
+(`local.backup.paths`): a daily systemd timer pushes an encrypted snapshot to
+`rest:http://backup.int.esselius.dev:8000/<hostname>` and prunes to 7 daily /
+5 weekly / 6 monthly. The repo password, the REST credentials, and the server's
+htpasswd all come from `secrets/backup.yaml`. Home Assistant additionally
+`pg_dump`s the recorder into the snapshot through `local.backup.prepareCommand`.
+
+Backed up: `home-assistant` (`/var/lib/hass` plus the pg_dump), `zigbee2mqtt`,
+`monitoring` (Grafana state only - the VictoriaMetrics/Loki history is large and
+regenerable), `kanidm`, `step-ca`. A guest with no `local.backup.paths` is simply
+not backed up.
+
+```fish
+# inspect / restore as any backed-up guest (the module adds a `restic-system` wrapper)
+incus exec home-assistant -- restic-system snapshots
+incus exec home-assistant -- restic-system restore latest --target /tmp/restore
+```
+
+Caveat: this is **local only** - the repositories live on `rpi5-8gb`'s pool, so a
+board loss loses the backups too. Add an offsite rclone/B2 copy of the
+`backup-data` repo when that matters (see Known risks).
+
+## Landing page (Homepage)
+
+The `homepage` workload runs gethomepage (`services.homepage-dashboard`) as a
+link hub for every workload, served at `https://homepage.int.esselius.dev`
+behind oauth2-proxy -> Kanidm (a `homepage` OIDC client in the kanidm workload,
+same pattern as the Zigbee2MQTT frontend).
+
 ## Known risks
 
 - **Zigbee coordinator**: the dongle is physical, so the instance must run on
@@ -427,6 +460,7 @@ Dashboards (`guests/monitoring/dashboards/`, folder "Homelab"):
 - **Secrets**: broker passwords, the Zigbee2MQTT network key, and Postgres
   credentials must go through sops/age (as in `nix-homelab-hosts`), never as
   literals in these configs.
-- **State**: incus storage lives on the host's persistent pool, but Home
-  Assistant/Postgres/Zigbee2MQTT state still needs its own backup path; a
-  rebuild of `rpi5-8gb` does not preserve it.
+- **State**: incus storage lives on the host's persistent pool, and the
+  `backup` workload snapshots the critical state to restic (see Backups), but
+  those repos are on the same board - a full loss of `rpi5-8gb` loses the
+  primary state *and* its local backups. An offsite copy is still outstanding.

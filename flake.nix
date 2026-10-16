@@ -78,7 +78,7 @@
           sops = false;
         };
         home-assistant = {
-          sops = false;
+          sops = true;
           specialArgs = {
             pyproject-nix-lib = inputs.pyproject-nix.lib;
           };
@@ -97,7 +97,12 @@
           system = "aarch64-linux";
           specialArgs = meta.specialArgs or { };
           modules =
-            lib.optionals (meta.sops or true) [ sops-nix.nixosModules.sops ]
+            lib.optionals (meta.sops or true) [
+              sops-nix.nixosModules.sops
+              # Restic client (shared); only acts on guests that set
+              # `local.backup.paths`, and needs sops for the repo credentials.
+              ./modules/backup.nix
+            ]
             ++ meta.extraModules or [ ]
             ++ [
               ./modules/local.nix
