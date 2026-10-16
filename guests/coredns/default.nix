@@ -35,8 +35,6 @@ let
     backup = "10.43.0.18";
     # Landing page.
     homepage = "10.43.0.21";
-    # Backrest (restic web UI).
-    backrest = "10.43.0.22";
   };
 
   # Non-HTTP service discovery (RFC 2782). Clients that honour SRV can find the

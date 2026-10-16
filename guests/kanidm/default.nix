@@ -101,10 +101,6 @@
         owner = "kanidm";
         mode = "0400";
       };
-      backrest_oidc_secret = {
-        owner = "kanidm";
-        mode = "0400";
-      };
     };
   };
 
@@ -213,19 +209,6 @@
         originUrl = "https://homepage.int.esselius.dev/oauth2/callback";
         originLanding = "https://homepage.int.esselius.dev/";
         basicSecretFile = config.sops.secrets.homepage_oidc_secret.path;
-        scopeMaps.homelab_users = [
-          "openid"
-          "email"
-          "profile"
-          "groups"
-        ];
-      };
-
-      systems.oauth2.backrest = {
-        displayName = "Backrest";
-        originUrl = "https://backrest.int.esselius.dev/oauth2/callback";
-        originLanding = "https://backrest.int.esselius.dev/";
-        basicSecretFile = config.sops.secrets.backrest_oidc_secret.path;
         scopeMaps.homelab_users = [
           "openid"
           "email"

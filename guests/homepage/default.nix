@@ -133,12 +133,6 @@
               description = "Nix binary cache";
             };
           }
-          {
-            Backrest = {
-              href = "https://backrest.int.esselius.dev";
-              description = "Restic backups";
-            };
-          }
         ];
       }
     ];
