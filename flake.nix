@@ -145,6 +145,8 @@
               ./modules/minimal.nix
               ./modules/monitoring-agent.nix
               ./modules/nix-cache.nix
+              # Reload nginx when an ACME cert lands after nginx started.
+              ./modules/nginx-acme-reload.nix
               ./guests/${name}
             ];
         };

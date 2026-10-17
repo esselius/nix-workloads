@@ -152,7 +152,7 @@ tasks:
           profile="$(nix eval --raw --impure --expr "let i = import ./inventory.nix; e = i.envs.${env}; in (builtins.getAttr e.defaultHost e.hosts).colimaProfile")"
           sshcfg="${TMPDIR:-/tmp}/nix-workloads-colima-ssh.cfg"
           colima ssh-config --profile "$profile" > "$sshcfg"
-          ssh_opts="-F $sshcfg -J colima-$profile -o StrictHostKeyChecking=accept-new"
+          ssh_opts="-F $sshcfg -J colima-$profile -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
           # sops in `dev` decrypts with the Mac's age identity, not a per-guest
           # host key - push it before activation (harmless for guests without
           # sops).
