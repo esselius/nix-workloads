@@ -251,8 +251,8 @@ tasks:
         command -v jq >/dev/null || { echo "jq not found" >&2; exit 1; }
         cfg="$(nix eval --impure --json --expr "let i = import ./inventory.nix; in { hosts = i.envs.{{.DEV_ENV}}.hosts; dns = i.ipFor \"{{.DEV_ENV}}\" \"coredns\"; }")"
         dns="$(echo "$cfg" | jq -r .dns)"
-        echo "$cfg" | jq -r '.hosts | to_entries[] | "\(.value.remote)\t\(.value.subnet)\t\(.value.bridge)"' \
-          | while IFS=$'\t' read -r remote subnet bridge; do
+        echo "$cfg" | jq -r '.hosts | to_entries[] | "\(.value.remote)\t\(.value.subnet)\t\(.value.bridge)\t\(.value.colimaProfile // .key)"' \
+          | while IFS=$'\t' read -r remote subnet bridge profile; do
               if ! INCUS_REMOTE="$remote" incus network show "$bridge" >/dev/null 2>&1; then
                 INCUS_REMOTE="$remote" incus network create "$bridge" \
                   ipv4.address="${subnet}.1/24" ipv4.nat=false ipv6.address=none
@@ -266,7 +266,14 @@ tasks:
                 INCUS_REMOTE="$remote" incus profile create vpn
                 INCUS_REMOTE="$remote" incus profile device add vpn eth0 nic network="$bridge"
               fi
-              echo "bootstrapped $remote: $bridge ${subnet}.1/24 (dns $dns) + container/vpn"
+              # The VM forwards the Mac's packets to the routed dev subnet; if it
+              # also emits ICMP redirects, macOS installs them and clobbers its
+              # default route (breaks web). Turn them off.
+              colima ssh --profile "$profile" -- sudo -n sh -c '
+                for i in all default col0 eth0 '"$bridge"'; do
+                  sysctl -w net.ipv4.conf."$i".send_redirects=0 >/dev/null 2>&1 || true
+                done' 2>/dev/null || true
+              echo "bootstrapped $remote: $bridge ${subnet}.1/24 (dns $dns) + container/vpn (redirects off)"
             done
 
   dev-route-up:
