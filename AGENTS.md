@@ -29,14 +29,16 @@ down.
   (`domain`, `realm`, `dnsAddress`, ...) from `modules/local.nix` / the env's
   host, and add new services to `inventory.nix`. The flake builds each guest for
   both envs (`<name>` and `<name>-dev`; same for terranix).
-- **Dev testbed is macOS-only and reuses the production CA.** `task dev-access-up
-  / -down / -status` (guarded by `uname -s = Darwin`) add the Mac's route to the
-  dev subnet and a `/etc/resolver/<dev zone>` entry pointing at the dev coredns -
-  no `/etc/hosts` edits. The dev subnet must not be `10.43.0.0/24` (that is the
-  Mac's WireGuard route to the Pi). The dev step-ca reuses the *production*
-  intermediate (`certs/intermediate_ca.crt` + `secrets/step-ca.yaml`), so dev
-  certs chain to the already-trusted Esselius root; the trade-off is a local CA
-  clone that can mint production-trusted certs.
+- **Dev testbed is macOS-only, route-free, and reuses the production CA.**
+  Never route the Mac into the dev subnet: macOS/vmnet `bridge100` plus the
+  WireGuard tunnel breaks the host's default route (apple/container #1881). The
+  `dev` `edge` workload SNI-passes TLS through to the guests and is published on
+  the VM's own address via a `proxy` device; `task dev-access-up/-down/-status`
+  (Darwin-only) map `*.dev.int.esselius.dev` to that address in a managed
+  `/etc/hosts` block; `ENV=dev task deploy` jumps SSH through the VM. The dev
+  step-ca reuses the *production* intermediate (`certs/intermediate_ca.crt` +
+  `secrets/step-ca.yaml`), so dev certs chain to the already-trusted Esselius
+  root; the trade-off is a local CA clone that can mint production-trusted certs.
 - Prefer small, explicit modules over abstractions. `terraform/common.nix` holds
   the only shared terranix config (the incus provider + remote); every workload
   is a sibling directory under `terraform/`.

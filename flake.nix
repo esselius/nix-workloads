@@ -77,6 +77,10 @@
         coredns = {
           sops = false;
         };
+        # Dev-only TLS SNI ingress; no secrets.
+        edge = {
+          sops = false;
+        };
         home-assistant = {
           sops = true;
           specialArgs = {
@@ -265,8 +269,8 @@
               pkgs.terranix
               # Drive the incus remotes from the Mac for bootstrap/debugging.
               pkgs.incus-lts.client
-              # `task dev-access-*`: parse `colima status --json` and look up
-              # dev names.
+              # `task dev-access-*`: parse `colima status --json` and verify
+              # dev name resolution.
               pkgs.jq
               pkgs.bind
               pkgs.nixfmt

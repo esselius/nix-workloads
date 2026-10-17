@@ -221,23 +221,35 @@ raw terranix apps (`nix run .#example`, `.#example.destroy`) still work too.
 ## Dev testbed (macOS)
 
 The `dev` env runs the same workloads in a local incus VM, browsable at
-`https://<service>.dev.int.esselius.dev` like the homelab. Deploying and
-restoring the dev env is a follow-up (see the migration/DR work); the **access
-plumbing** on the Mac is automated:
+`https://<service>.dev.int.esselius.dev` like the homelab. The **access plumbing**
+on the Mac is automated (deploying the full dev stack, including the sops
+overlay, is a follow-up):
 
 ```fish
-# after the dev Colima VM and its coredns are up
-task dev-access-up        # route(s) to the dev subnet + /etc/resolver entry
-task dev-access-status    # show the route, the resolver file and a lookup
-task dev-access-down      # remove them
+task dev-bootstrap        # dev incus bridge + profiles (once)
+task dev-access-up        # map *.dev.int.esselius.dev -> the dev VM
+task dev-access-status    # mapping + lookup + ingress reachability
+task dev-access-down      # remove the mapping
+ENV=dev task up     -- <name>   # create on the dev VM
+ENV=dev task deploy -- <name>   # deploy over ProxyJump (no host route)
 ```
 
-`dev-access-up` adds a host route to each `dev` host's subnet (read from
-`inventory.nix`, VM IP via `colima status --json`) and writes
-`/etc/resolver/<zone>` pointing at the env's coredns - no `/etc/hosts` edits.
-The dev subnet is deliberately **not** `10.43.0.0/24`: that is the Mac's
-WireGuard route to the Pi and would shadow the VM. Growing to a second dev VM is
-"add a host + placement entry" in `inventory.nix`; the tasks pick it up.
+**No host route.** Routing the Mac into the dev subnet breaks its default route -
+macOS/vmnet (`bridge100`) interacting with the WireGuard tunnel (apple/container
+#1881) - so nothing touches the Mac's routing table. Instead everything hops
+through the VM, which the Mac already reaches at `colima status --json .ip_address`:
+
+- an `edge` workload (dev-only) is a TLS **SNI passthrough**: it reads the
+  ClientHello's server name and forwards the still-encrypted stream to the guest
+  that owns it, so guests keep presenting their own step-ca certs (end-to-end
+  TLS, no wildcard);
+- the `edge` instance carries a `proxy` device publishing it on the VM's own
+  address (`0.0.0.0:443`), which the Mac reaches with no route;
+- `dev-access-up` maps the dev names to that address in a managed `/etc/hosts`
+  block (no DNS daemon; `dev-access-down` removes it);
+- `ENV=dev task deploy` copies the closure and activates over SSH **jumped
+  through the VM** (`colima ssh-config`), so the guest subnet is never routed
+  from the Mac.
 
 **Trust.** The dev step-ca reuses the *production* intermediate
 (`certs/intermediate_ca.crt` plus the key/password in `secrets/step-ca.yaml`), so

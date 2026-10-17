@@ -59,7 +59,12 @@ let
 
   # Keyed by directory name under terraform/ and guests/. `dns` lists the names
   # that resolve to the service (aliases included); `[]` means "no A record".
+  # `https = true` marks services the dev `edge` ingress should route TLS to.
   services = {
+    edge = {
+      ip = 9;
+      dns = [ ];
+    };
     example = {
       ip = 10;
       dns = [ ];
@@ -71,10 +76,12 @@ let
     monitoring = {
       ip = 12;
       dns = [ "monitoring" ];
+      https = true;
     };
     kanidm = {
       ip = 13;
       dns = [ "idm" ];
+      https = true;
     };
     coredns = {
       ip = 14;
@@ -90,10 +97,12 @@ let
     node-red = {
       ip = 16;
       dns = [ "node-red" ];
+      https = true;
     };
     zigbee2mqtt = {
       ip = 17;
       dns = [ "zigbee2mqtt" ];
+      https = true;
     };
     backup = {
       ip = 18;
@@ -102,14 +111,17 @@ let
     home-assistant = {
       ip = 19;
       dns = [ "home-assistant" ];
+      https = true;
     };
     attic = {
       ip = 20;
       dns = [ "cache" ];
+      https = true;
     };
     homepage = {
       ip = 21;
       dns = [ "homepage" ];
+      https = true;
     };
   };
 
