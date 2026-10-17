@@ -107,6 +107,9 @@
             ++ [
               ./modules/local.nix
               ./modules/lxc-credentials.nix
+              # Container-specific size cuts (no self-build/install tooling,
+              # docs, or nixpkgs-source flake pin); see modules/minimal.nix.
+              ./modules/minimal.nix
               ./modules/monitoring-agent.nix
               ./modules/nix-cache.nix
               ./guests/${name}

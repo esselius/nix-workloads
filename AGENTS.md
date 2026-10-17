@@ -51,6 +51,18 @@ down.
 - Container guests set `nix.settings.max-jobs = 0`: they never build, only
   substitute; an in-guest build fails with `local builds are disabled (max-jobs
   = 0)`.
+- `modules/minimal.nix` (imported by every guest) trims the parts of a stock
+  NixOS system that only exist to build/install NixOS locally or to prettify an
+  interactive shell: the flake registry pin + NIX_PATH (keeps the ~197 MiB
+  nixpkgs source out of the closure), the bundled installer channel (another
+  ~197 MiB copy of nixpkgs), `system.disableInstallerTools` (drops
+  nixos-rebuild-ng and its Python), the `documentation.*` trees, and the
+  `environment.defaultPackages` convenience set. Worth ~0.2-0.4 GiB per guest
+  (fleet total ~3 GiB), which the single Attic cache holds. If a guest ever
+  genuinely needs one of these, override it in that guest, not by reverting this
+  module. The still-largest shared item is `grafana-alloy` (~360 MiB, the
+  monitoring agent); shrinking it means replacing Alloy with node-exporter +
+  a log shipper, a separate decision.
 - Builds run on the Mac's `aarch64-linux` `nix.linux-builder`, and results reach
   the fleet through one shared cache: the `attic` workload
   (`cache.int.esselius.dev`). `task cache-push -- <name>` pushes only that
