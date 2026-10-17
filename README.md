@@ -221,9 +221,9 @@ raw terranix apps (`nix run .#example`, `.#example.destroy`) still work too.
 ## Dev testbed (macOS)
 
 The `dev` env runs the same workloads in a local incus VM, browsable at
-`https://<service>.dev.int.esselius.dev` like the homelab. The **access plumbing**
-on the Mac is automated (deploying the full dev stack, including the sops
-overlay, is a follow-up):
+`https://<service>.dev.int.esselius.dev` like the homelab. The whole path is
+automated (dev guests decrypt the committed secrets with the Mac's age key - see
+below):
 
 ```fish
 task dev-bootstrap        # dev incus bridge + profiles (once)
@@ -256,6 +256,12 @@ through the VM, which the Mac already reaches at `colima status --json .ip_addre
 dev certs chain to the Esselius root the Mac already trusts - no keychain import
 and no browser warning. Trade-off: the dev CA is a clone able to mint
 production-trusted certificates; it exists only in the local VM.
+
+**Secrets.** Dev guests are not re-keyed: `modules/sops-env.nix` points sops at
+`/etc/nix-workloads/dev-age.key`, and `ENV=dev task deploy` pushes the Mac's own
+age identity (derived from `~/.ssh/id_ed25519`) there before activating. So the
+committed `secrets/*.yaml` decrypt unchanged; the homelab keeps per-guest host
+keys. The Mac's key only ever lives in this ephemeral local VM.
 
 These tasks are macOS-only; on other platforms they warn and no-op.
 
