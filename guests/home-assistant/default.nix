@@ -131,6 +131,34 @@
       ];
   };
 
+  # HA 2026.9 moved the HTTP config into `.storage/http` and, after the one-time
+  # YAML migration, stages a `http:` block from configuration.yaml as a
+  # *pending* trial that auto-reverts after 5 minutes unless confirmed in the
+  # UI. So the declared `http.use_x_forwarded_for`/`trusted_proxies` never take
+  # effect and HA logs "A request from a reverse proxy was received ... not
+  # set-up for reverse proxies" behind nginx. Promote the pending config to
+  # stable before HA starts; once they match, this is a no-op.
+  systemd.services.home-assistant-http-promote = {
+    description = "Promote HA's pending HTTP config so the declared one sticks";
+    wantedBy = [ "multi-user.target" ];
+    before = [ "home-assistant.service" ];
+    path = [ pkgs.jq ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      store=/var/lib/hass/.storage/http
+      [ -f "$store" ] || exit 0
+      jq -e '.data.pending != null' "$store" >/dev/null 2>&1 || exit 0
+      tmp="$(mktemp)"
+      jq '.data.stable = .data.pending | .data.pending = null' "$store" > "$tmp"
+      install -m 600 -o hass -g hass "$tmp" "$store"
+      rm -f "$tmp"
+      echo "promoted pending HTTP config to stable"
+    '';
+  };
+
   # Recorder backend, co-located with HA (no dedicated postgres guest). The
   # default dataDir (/var/lib/postgresql/${psqlSchema}) lands on the
   # `home-assistant-postgres` volume, which terraform mounts at
