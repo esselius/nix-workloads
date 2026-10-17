@@ -1,9 +1,9 @@
 # The single source of truth for *where* each workload runs and *where* it is
 # addressed. Two dimensions, kept deliberately separate:
 #
-#   * a "site" is a logical environment - one DNS zone and one address space
+#   * an "env" is a logical environment - one DNS zone and one address space
 #     (the homelab on the Pi, or `dev` on a local incus VM);
-#   * within a site, "hosts" are the incus servers and "placement" maps a
+#   * within an env, "hosts" are the incus servers and "placement" maps a
 #     service to a host.
 #
 # Workloads never learn which host runs a dependency: they reference names
@@ -11,10 +11,10 @@
 # service is placed. Moving a service between hosts is therefore a change to
 # `placement` (and its A record), never to the workloads themselves.
 #
-# A site's `zone` is a *flat* namespace: there is no per-host suffix. Two hosts
-# in one site simply occupy different subnets, and a service has one name.
+# An env's `zone` is a *flat* namespace: there is no per-host suffix. Two hosts
+# in one env simply occupy different subnets, and a service has one name.
 let
-  sites = {
+  envs = {
     homelab = {
       zone = "int.esselius.dev";
       # Kanidm's identity realm, independent of where its URL lives.
@@ -110,16 +110,16 @@ let
     };
   };
 
-  hostFor = site: service: sites.${site}.placement.${service} or sites.${site}.defaultHost;
+  hostFor = env: service: envs.${env}.placement.${service} or envs.${env}.defaultHost;
 in
 {
-  inherit sites services hostFor;
+  inherit envs services hostFor;
 
-  # The site's DNS zone (also the guests' `local.domain`).
-  zoneFor = site: sites.${site}.zone;
+  # The env's DNS zone (also the guests' `local.domain`).
+  zoneFor = env: envs.${env}.zone;
 
-  # IPv4 address of a service in a site, from its host's subnet + last octet.
+  # IPv4 address of a service in an env, from its host's subnet + last octet.
   ipFor =
-    site: service:
-    "${sites.${site}.hosts.${hostFor site service}.subnet}.${toString services.${service}.ip}";
+    env: service:
+    "${envs.${env}.hosts.${hostFor env service}.subnet}.${toString services.${service}.ip}";
 }

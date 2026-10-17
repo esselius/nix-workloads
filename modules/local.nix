@@ -1,25 +1,25 @@
 {
   lib,
   config,
-  site ? "homelab",
+  env ? "homelab",
   ...
 }:
 let
   inherit (lib) mkOption types;
   inv = import ../inventory.nix;
-  siteCfg = inv.sites.${site};
-  zone = siteCfg.zone;
+  envCfg = inv.envs.${env};
+  zone = envCfg.zone;
 in
 {
-  # Shared, site-selectable knobs. Defaults come from `inventory.nix` for the
-  # active `site` (homelab = the Pi; dev = a local incus VM), so a guest reads
+  # Shared, env-selectable knobs. Defaults come from `inventory.nix` for the
+  # active `env` (homelab = the Pi; dev = a local incus VM), so a guest reads
   # `config.local.*` and never hard-codes a domain, CA, cache or LAN detail.
-  # The `site` is supplied by the flake (`nixosConfigurations.<name>` is the
+  # The `env` is supplied by the flake (`nixosConfigurations.<name>` is the
   # homelab; `<name>-dev` is the local testbed).
   options.local = {
-    site = mkOption {
+    env = mkOption {
       type = types.str;
-      default = site;
+      default = env;
       description = "Environment this system is built for (key into inventory.nix).";
     };
 
@@ -34,15 +34,15 @@ in
     # identities that were restored from backup.
     realm = mkOption {
       type = types.str;
-      default = siteCfg.realm;
+      default = envCfg.realm;
       description = "Identity realm (Kanidm managed domain, user suffixes).";
     };
 
-    # The site's internal resolver, used to advertise DNS to guests.
+    # The env's internal resolver, used to advertise DNS to guests.
     dnsAddress = mkOption {
       type = types.str;
-      default = inv.ipFor site "coredns";
-      description = "Internal coredns address for the site.";
+      default = inv.ipFor env "coredns";
+      description = "Internal coredns address for the env.";
     };
 
     caFiles = mkOption {
@@ -78,7 +78,7 @@ in
       url = mkOption {
         type = types.str;
         # Only the homelab has an Attic cache; `dev` copies closures instead.
-        default = if site == "homelab" then "https://cache.${zone}/homelab" else "";
+        default = if env == "homelab" then "https://cache.${zone}/homelab" else "";
         description = "Attic substituter URL (\"\" = no cache).";
       };
       publicKey = mkOption {
@@ -92,7 +92,7 @@ in
     lan = {
       enable = mkOption {
         type = types.bool;
-        default = site == "homelab";
+        default = env == "homelab";
       };
       address = mkOption {
         type = types.str;

@@ -19,16 +19,16 @@ down.
      profiles, resource limits, devices.
   3. **OS** - `guests/<name>/default.nix`, a `nixosConfigurations.<name>` system
      deployed into the running instance with `nixos-rebuild`.
-- **Sites + inventory.** `inventory.nix` is the single source of truth for
-  *where* each workload runs and is addressed: a *site* is one DNS zone + address
+- **Environments + inventory.** `inventory.nix` is the single source of truth for
+  *where* each workload runs and is addressed: an *env* is one DNS zone + address
   space (`homelab` = the Pi, `dev` = a local incus VM), hosts are incus servers,
   and `placement` maps a service to a host. The zone is **flat** - a service has
   one name (`mosquitto.<zone>`) whichever host runs it - so moving a workload is
   a `placement` change, never a workload change. Never hard-code a domain or a
   `10.43` address in a guest or a `terraform/<name>`: read `config.local.*`
-  (`domain`, `realm`, `dnsAddress`, ...) from `modules/local.nix` / the site's
+  (`domain`, `realm`, `dnsAddress`, ...) from `modules/local.nix` / the env's
   host, and add new services to `inventory.nix`. The flake builds each guest for
-  both sites (`<name>` and `<name>-dev`; same for terranix).
+  both envs (`<name>` and `<name>-dev`; same for terranix).
 - **Dev testbed is macOS-only and reuses the production CA.** `task dev-access-up
   / -down / -status` (guarded by `uname -s = Darwin`) add the Mac's route to the
   dev subnet and a `/etc/resolver/<dev zone>` entry pointing at the dev coredns -

@@ -88,22 +88,22 @@
       metaFor = name: guestMeta.${name} or { sops = true; };
 
       # `-dev` variants are the same guest systems built for the local testbed
-      # site (see inventory.nix); they share every module and differ only in the
-      # `site` specialArg, so components can be trialled locally before a
+      # env (see inventory.nix); they share every module and differ only in the
+      # `env` specialArg, so components can be trialled locally before a
       # homelab rollout.
       devAttrs = map (name: "${name}-dev") workloads;
       allAttrs = workloads ++ devAttrs;
 
-      # One workload's system for a site.
+      # One workload's system for a env.
       mkSystem =
-        site: name:
+        env: name:
         let
           meta = metaFor name;
         in
         nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
           specialArgs = (meta.specialArgs or { }) // {
-            inherit site;
+            inherit env;
           };
           modules =
             lib.optionals (meta.sops or true) [
@@ -207,7 +207,7 @@
               terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
               modules = [
                 ./terraform/common.nix
-                ./terraform/sites/homelab.nix
+                ./terraform/envs/homelab.nix
                 ./terraform/${name}
               ];
             })
@@ -218,7 +218,7 @@
                   terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
                   modules = [
                     ./terraform/common.nix
-                    ./terraform/sites/dev.nix
+                    ./terraform/envs/dev.nix
                     ./terraform/${name}
                   ];
                 }

@@ -10,19 +10,19 @@ let
   # zone: a delegation whose authority is a private address cannot be followed
   # by a public/forwarding resolver - it returns REFUSED / "No Reachable
   # Authority". Instead, WireGuard clients set their resolver to this guest, so
-  # CoreDNS answers the site zone authoritatively. See README > Networking.
+  # CoreDNS answers the env zone authoritatively. See README > Networking.
   inv = import ../../inventory.nix;
-  site = config.local.site;
+  env = config.local.env;
   domain = config.local.domain;
   ns = "ns1.${domain}";
 
   # Records come from inventory.nix, not a hand-maintained map: every service's
-  # alias names resolve to its address in this site, so clients never learn
+  # alias names resolve to its address in this env, so clients never learn
   # which host runs a dependency. Moving a service is a `placement` change.
   aRecords = lib.concatStringsSep "\n" (
     lib.flatten (
       lib.mapAttrsToList (
-        service: svc: map (name: "${name} IN A ${inv.ipFor site service}") svc.dns
+        service: svc: map (name: "${name} IN A ${inv.ipFor env service}") svc.dns
       ) inv.services
     )
   );
@@ -117,7 +117,7 @@ in
   services.resolved.enable = false;
   networking.nameservers = [ "127.0.0.1" ];
 
-  # Authoritative for the site zone. The homelab also forwards everything else
+  # Authoritative for the env zone. The homelab also forwards everything else
   # upstream (so it doubles as a resolver for WireGuard clients); `dev` does not
   # - it must not reach external services.
   services.coredns = {
@@ -129,7 +129,7 @@ in
         log
       }
     ''
-    + lib.optionalString (site == "homelab") ''
+    + lib.optionalString (env == "homelab") ''
       .:53 {
         forward . 1.1.1.1 9.9.9.9
         cache 30

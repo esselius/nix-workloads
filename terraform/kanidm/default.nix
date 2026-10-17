@@ -2,7 +2,7 @@
 let
   # OIDC identity provider (WebAuthn/passkeys). Pinned on the vpn bridge;
   # reached by name (`idm.int.esselius.dev`, an A record in the coredns zone).
-  staticIp = (import ../../inventory.nix).ipFor config.local.site "kanidm";
+  staticIp = (import ../../inventory.nix).ipFor config.local.env "kanidm";
 in
 {
   # Kanidm's database is its whole identity store, so keep it on a volume.

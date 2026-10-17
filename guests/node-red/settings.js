@@ -60,8 +60,8 @@ module.exports = {
       icon: "fa-cloud",
       strategy: require("passport-openidconnect").Strategy,
       options: {
-        // URLs come from the unit environment (set from the active site) so this
-        // file needs no per-site fork. See guests/node-red/default.nix.
+        // URLs come from the unit environment (set from the active env) so this
+        // file needs no per-env fork. See guests/node-red/default.nix.
         issuer: `${process.env.NODE_RED_IDM_URL}/oauth2/openid/node-red`,
         authorizationURL: `${process.env.NODE_RED_IDM_URL}/ui/oauth2`,
         tokenURL: `${process.env.NODE_RED_IDM_URL}/oauth2/token`,

@@ -23,25 +23,25 @@ instance existence. That split is what lets a workload be upgraded in place
 ## Layout
 
 ```
-flake.nix                    flake-parts + terranix; registers workloads + guest systems + sites
-inventory.nix                sites + services: where each workload is addressed and placed
-modules/local.nix            shared knobs (domain, realm, CA, ACME, cache, LAN) - see Sites
-terraform/common.nix         shared terranix config: incus provider + remote (from the site)
-terraform/sites/<site>.nix   selects a site for a terranix config (homelab | dev)
+flake.nix                    flake-parts + terranix; registers workloads + guest systems + envs
+inventory.nix                envs + services: where each workload is addressed and placed
+modules/local.nix            shared knobs (domain, realm, CA, ACME, cache, LAN) - see Environments
+terraform/common.nix         shared terranix config: incus provider + remote (from the env)
+terraform/envs/<env>.nix     selects an env for a terranix config (homelab | dev)
 terraform/<name>/default.nix one workload's infrastructure
 guests/<name>/default.nix    one workload's NixOS system
 secrets/<name>.yaml          sops-encrypted secrets (see Secrets)
 .sops.yaml                   age recipients per secret path
 ```
 
-## Sites
+## Environments
 
 `inventory.nix` is the single source of truth for **where** a workload runs and
-**where** it is addressed. A *site* is a logical environment - one DNS zone and
-one address space; within a site, *hosts* are incus servers and *placement* maps
+**where** it is addressed. An *env* is a logical environment - one DNS zone and
+one address space; within an env, *hosts* are incus servers and *placement* maps
 a service to a host:
 
-| Site | Incus host | Zone |
+| Env | Incus host | Zone |
 |------|-----------|------|
 | `homelab` | `rpi5-8gb` (later `rpi5-4gb`) | `int.esselius.dev` |
 | `dev` | a local Colima VM | `dev.int.esselius.dev` |
@@ -54,8 +54,8 @@ derived `local.*` knobs (`domain`, `realm`, `dnsAddress`, ...) from
 Kanidm identity **realm** is separate from `domain`, so a dev Kanidm serves
 `idm.dev.int.esselius.dev` but still owns the restored `int.esselius.dev` users.
 
-The flake builds each guest for both sites: `nixosConfigurations.<name>` is the
-homelab, `<name>-dev` the local testbed (same modules, `site = "dev"`); terranix
+The flake builds each guest for both envs: `nixosConfigurations.<name>` is the
+homelab, `<name>-dev` the local testbed (same modules, `env = "dev"`); terranix
 mirrors this (`<name>` and `<name>-dev`). `nix flake check` evaluates all of them.
 
 ## Networking
@@ -220,9 +220,9 @@ raw terranix apps (`nix run .#example`, `.#example.destroy`) still work too.
 
 ## Dev testbed (macOS)
 
-The `dev` site runs the same workloads in a local incus VM, browsable at
+The `dev` env runs the same workloads in a local incus VM, browsable at
 `https://<service>.dev.int.esselius.dev` like the homelab. Deploying and
-restoring the dev site is a follow-up (see the migration/DR work); the **access
+restoring the dev env is a follow-up (see the migration/DR work); the **access
 plumbing** on the Mac is automated:
 
 ```fish
@@ -234,7 +234,7 @@ task dev-access-down      # remove them
 
 `dev-access-up` adds a host route to each `dev` host's subnet (read from
 `inventory.nix`, VM IP via `colima status --json`) and writes
-`/etc/resolver/<zone>` pointing at the site's coredns - no `/etc/hosts` edits.
+`/etc/resolver/<zone>` pointing at the env's coredns - no `/etc/hosts` edits.
 The dev subnet is deliberately **not** `10.43.0.0/24`: that is the Mac's
 WireGuard route to the Pi and would shadow the VM. Growing to a second dev VM is
 "add a host + placement entry" in `inventory.nix`; the tasks pick it up.

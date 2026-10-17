@@ -887,7 +887,7 @@ in
   # The relay reads the ntfy topic (secret) from this env file. Only the homelab
   # runs it: it is the one component that talks to an external service
   # (ntfy.sh), and `dev` must stay isolated.
-  systemd.services.grafana-ntfy-relay = lib.mkIf (config.local.site == "homelab") {
+  systemd.services.grafana-ntfy-relay = lib.mkIf (config.local.env == "homelab") {
     description = "Reformat Grafana alert webhooks into ntfy notifications";
     wantedBy = [ "multi-user.target" ];
     after = [ "network-online.target" ];

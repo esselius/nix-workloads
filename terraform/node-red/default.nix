@@ -3,7 +3,7 @@ let
   # Node-RED (the smart-home automations, migrated off adama). Pinned on the vpn
   # bridge; reached as `node-red.int.esselius.dev` (an A record in the coredns
   # zone).
-  staticIp = (import ../../inventory.nix).ipFor config.local.site "node-red";
+  staticIp = (import ../../inventory.nix).ipFor config.local.env "node-red";
 in
 {
   # Persistent volume for Node-RED's state: flows, credentials, palette and

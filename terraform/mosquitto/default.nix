@@ -1,7 +1,7 @@
 { lib, config, ... }:
 let
   # Stable target for the MQTT clients (z2m/hass/nr/p1ib). See README Networking.
-  staticIp = (import ../../inventory.nix).ipFor config.local.site "mosquitto";
+  staticIp = (import ../../inventory.nix).ipFor config.local.env "mosquitto";
 in
 {
   resource.incus_instance.mosquitto = {

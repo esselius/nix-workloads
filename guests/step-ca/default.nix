@@ -108,7 +108,7 @@
 
       # A single ACME provisioner for the internal CA. The name is the path
       # segment in the directory URL:
-      #   https://step-ca.<site zone>:8443/acme/internal/directory
+      #   https://step-ca.<env zone>:8443/acme/internal/directory
       authority.provisioners = [
         {
           type = "ACME";

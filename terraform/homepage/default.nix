@@ -3,7 +3,7 @@ let
   # Landing page for the homelab. Pinned on the vpn bridge; reached as
   # `homepage.int.esselius.dev` (an A record in the coredns zone), gated by
   # oauth2-proxy -> Kanidm like the other web UIs.
-  staticIp = (import ../../inventory.nix).ipFor config.local.site "homepage";
+  staticIp = (import ../../inventory.nix).ipFor config.local.env "homepage";
 in
 {
   resource.incus_instance.homepage = {

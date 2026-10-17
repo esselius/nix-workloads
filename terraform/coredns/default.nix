@@ -3,7 +3,7 @@ let
   # Internal-DNS workload. Pinned on the vpn bridge like every other workload.
   # WireGuard clients point their resolver here (`DNS = 10.43.0.14`); the address
   # is also the `ns1` A record inside the zone (guests/coredns). See README.
-  staticIp = (import ../../inventory.nix).ipFor config.local.site "coredns";
+  staticIp = (import ../../inventory.nix).ipFor config.local.env "coredns";
 in
 {
   resource.incus_instance.coredns = {

@@ -1,15 +1,15 @@
 { lib, config, ... }:
 let
   inv = import ../inventory.nix;
-  siteCfg = inv.sites.${config.local.site};
-  host = siteCfg.hosts.${siteCfg.defaultHost};
+  envCfg = inv.envs.${config.local.env};
+  host = envCfg.hosts.${envCfg.defaultHost};
 in
 {
-  # Which site this terranix config targets. The homelab is the default; a
-  # `terraform/sites/dev.nix` module sets `local.site = "dev"`. Everything
+  # Which env this terranix config targets. The homelab is the default; a
+  # `terraform/envs/dev.nix` module sets `local.env = "dev"`. Everything
   # below (bridge, pool, incus remote, LAN NIC) is derived from the inventory
   # so a workload's terraform never encodes a physical host.
-  options.local.site = lib.mkOption {
+  options.local.env = lib.mkOption {
     type = lib.types.str;
     default = "homelab";
     description = "Environment (key into inventory.nix).";
@@ -41,7 +41,7 @@ in
     description = "Attach the macvlan eth1 LAN NIC.";
   };
 
-  # Which incus server OpenTofu drives, from the site's host in the inventory.
+  # Which incus server OpenTofu drives, from the env's host in the inventory.
   options.local.incus = {
     defaultRemote = lib.mkOption {
       type = lib.types.str;
@@ -63,13 +63,13 @@ in
   config = {
     local.vpnBridge = lib.mkDefault host.bridge;
     local.storagePool = lib.mkDefault host.pool;
-    local.lan.enable = lib.mkDefault (config.local.site == "homelab");
+    local.lan.enable = lib.mkDefault (config.local.env == "homelab");
 
     local.incus.defaultRemote = lib.mkDefault host.remote;
     # The homelab remote is declared inline (the Mac has no local incus daemon);
     # `dev` uses whatever the local `colima` remote is configured to be.
     local.incus.remote = lib.mkDefault (
-      if config.local.site == "homelab" then
+      if config.local.env == "homelab" then
         [
           {
             name = "rpi5-8gb";
@@ -80,7 +80,7 @@ in
       else
         [ ]
     );
-    local.incus.generateClientCertificates = lib.mkDefault (config.local.site == "homelab");
+    local.incus.generateClientCertificates = lib.mkDefault (config.local.env == "homelab");
     local.incus.acceptRemoteCertificate = lib.mkDefault true;
 
     terraform.required_providers.incus = {

@@ -1,8 +1,8 @@
 version: "3"
 
 vars:
-  # Site used by the `dev-*` tasks below (key into inventory.nix).
-  DEV_SITE: dev
+  # Env used by the `dev-*` tasks below (key into inventory.nix).
+  DEV_ENV: dev
   DEV_ZONE: dev.int.esselius.dev
 
 tasks:
@@ -204,9 +204,9 @@ tasks:
         fi
 
   # --- Dev access (macOS) ---------------------------------------------------
-  # The local `dev` site runs behind an incus bridge inside a Colima VM, so the
-  # Mac needs (1) a route to the site subnet and (2) a split-DNS resolver entry
-  # pointing at the site's coredns - then `https://<svc>.dev.int.esselius.dev`
+  # The local `dev` env runs behind an incus bridge inside a Colima VM, so the
+  # Mac needs (1) a route to the env subnet and (2) a split-DNS resolver entry
+  # pointing at the env's coredns - then `https://<svc>.dev.int.esselius.dev`
   # works in a normal browser, exactly like the homelab. Both are derived from
   # inventory.nix; add a host there (and start its Colima profile) to grow this
   # to more VMs. These tasks are macOS-only for now.
@@ -223,7 +223,7 @@ tasks:
         command -v colima >/dev/null || { echo "colima not found" >&2; exit 1; }
         command -v jq >/dev/null || { echo "jq not found" >&2; exit 1; }
         sudo -v
-        nix eval --impure --json --expr "let i = import ./inventory.nix; in i.sites.{{.DEV_SITE}}.hosts" \
+        nix eval --impure --json --expr "let i = import ./inventory.nix; in i.envs.{{.DEV_ENV}}.hosts" \
           | jq -r 'to_entries[] | "\(.value.subnet)\t\(.value.colimaProfile // .key)"' \
           | while IFS=$'\t' read -r subnet profile; do
               ip="$(colima status --profile "$profile" --json 2>/dev/null | jq -r '.ip_address // empty')"
@@ -242,7 +242,7 @@ tasks:
           exit 0
         fi
         sudo -v
-        nix eval --impure --json --expr "let i = import ./inventory.nix; in i.sites.{{.DEV_SITE}}.hosts" \
+        nix eval --impure --json --expr "let i = import ./inventory.nix; in i.envs.{{.DEV_ENV}}.hosts" \
           | jq -r '.[].subnet' | while read -r subnet; do
               sudo route -n delete -net "${subnet}.0/24" 2>/dev/null \
                 && echo "removed ${subnet}.0/24" || echo "no route for ${subnet}.0/24"
@@ -258,7 +258,7 @@ tasks:
           exit 0
         fi
         sudo -v
-        cfg="$(nix eval --impure --json --expr "let i = import ./inventory.nix; in { hosts = i.sites.{{.DEV_SITE}}.hosts; coredns = i.services.coredns.ip; }")"
+        cfg="$(nix eval --impure --json --expr "let i = import ./inventory.nix; in { hosts = i.envs.{{.DEV_ENV}}.hosts; coredns = i.services.coredns.ip; }")"
         f="/etc/resolver/{{.DEV_ZONE}}"
         sudo mkdir -p /etc/resolver
         {
@@ -302,7 +302,7 @@ tasks:
           echo "warning: dev-access targets are macOS-only; skipping" >&2
           exit 0
         fi
-        nix eval --impure --json --expr "let i = import ./inventory.nix; in i.sites.{{.DEV_SITE}}.hosts" \
+        nix eval --impure --json --expr "let i = import ./inventory.nix; in i.envs.{{.DEV_ENV}}.hosts" \
           | jq -r '.[].subnet' | while read -r s; do
               route -n get "${s}.0/24" 2>/dev/null | grep -E 'destination|gateway' || echo "no route for ${s}.0/24"
             done

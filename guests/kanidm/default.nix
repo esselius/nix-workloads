@@ -117,13 +117,13 @@
     server = {
       enable = true;
       settings = {
-        # Serve on :443 so the port-less origin/URLs (https://idm.<site zone>)
+        # Serve on :443 so the port-less origin/URLs (https://idm.<env zone>)
         # match; the module grants CAP_NET_BIND_SERVICE.
         bindaddress = "0.0.0.0:443";
         origin = "https://idm.${config.local.domain}";
         # The managed identity realm, which stays `int.esselius.dev` even in dev
         # (a restored database owns those identities); only the URL uses the
-        # site zone.
+        # env zone.
         domain = config.local.realm;
         tls_chain = "/var/lib/acme/idm.${config.local.domain}/fullchain.pem";
         tls_key = "/var/lib/acme/idm.${config.local.domain}/key.pem";
