@@ -153,6 +153,14 @@ tasks:
           sshcfg="${TMPDIR:-/tmp}/nix-workloads-colima-ssh.cfg"
           colima ssh-config --profile "$profile" > "$sshcfg"
           ssh_opts="-F $sshcfg -J colima-$profile -o StrictHostKeyChecking=accept-new"
+          # sops in `dev` decrypts with the Mac's age identity, not a per-guest
+          # host key - push it before activation (harmless for guests without
+          # sops).
+          seedfile="${TMPDIR:-/tmp}/nix-workloads-dev-age.key"
+          ssh-to-age -private-key -i "$HOME/.ssh/id_ed25519" > "$seedfile"
+          INCUS_REMOTE="$remote" incus file push --uid 0 --gid 0 --mode 400 "$seedfile" \
+            "$name/etc/nix-workloads/dev-age.key" --create-dirs
+          rm -f "$seedfile"
           echo "$env env: no cache; copying the closure via the $profile VM"
         fi
 

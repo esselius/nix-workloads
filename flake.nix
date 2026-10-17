@@ -132,6 +132,9 @@
               # Restic client (shared); only acts on guests that set
               # `local.backup.paths`, and needs sops for the repo credentials.
               ./modules/backup.nix
+              # `dev` guests decrypt with the Mac's age key (pushed at deploy),
+              # so no secret re-keying/overlay is needed.
+              ./modules/sops-env.nix
             ]
             ++ meta.extraModules or [ ]
             ++ [
