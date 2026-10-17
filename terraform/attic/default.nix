@@ -3,7 +3,7 @@ let
   # Self-hosted Attic binary cache: the shared substituter the Mac's linux-builder
   # pushes to and every host/guest pulls from. Pinned on the vpn bridge; reached
   # as `cache.int.esselius.dev` (an A record in the coredns zone).
-  staticIp = "10.43.0.20";
+  staticIp = (import ../../inventory.nix).ipFor config.local.site "attic";
 in
 {
   # Persistent volume for the cache: sqlite DB + chunked NAR storage. Mounted at

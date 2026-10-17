@@ -236,8 +236,8 @@ in
         # Grafana listens on loopback only; nginx terminates TLS and proxies.
         http_addr = "127.0.0.1";
         http_port = 3000;
-        domain = "monitoring.int.esselius.dev";
-        root_url = "https://monitoring.int.esselius.dev/";
+        domain = "monitoring.${config.local.domain}";
+        root_url = "https://monitoring.${config.local.domain}/";
       };
       security = {
         admin_user = "admin";
@@ -245,7 +245,7 @@ in
         secret_key = "$__file{${config.sops.secrets.grafana_secret_key.path}}";
         # Accept the browser's Origin (Grafana otherwise compares it to the
         # proxied request host and rejects queries with "origin not allowed").
-        csrf_trusted_origins = "https://monitoring.int.esselius.dev";
+        csrf_trusted_origins = "https://monitoring.${config.local.domain}";
       };
       # Login via Kanidm (OIDC/passkeys). Roles come from the `grafana_role`
       # claim that Kanidm builds from group membership. The admin password above
@@ -256,9 +256,9 @@ in
         client_id = "grafana";
         client_secret = "$__file{${config.sops.secrets.grafana_oidc_secret.path}}";
         scopes = "openid profile email groups";
-        auth_url = "https://idm.int.esselius.dev/ui/oauth2";
-        token_url = "https://idm.int.esselius.dev/oauth2/token";
-        api_url = "https://idm.int.esselius.dev/oauth2/openid/grafana/userinfo";
+        auth_url = "https://idm.${config.local.domain}/ui/oauth2";
+        token_url = "https://idm.${config.local.domain}/oauth2/token";
+        api_url = "https://idm.${config.local.domain}/oauth2/openid/grafana/userinfo";
         use_pkce = true;
         use_refresh_token = true;
         allow_sign_up = true;
@@ -884,8 +884,10 @@ in
     };
   };
 
-  # The relay reads the ntfy topic (secret) from this env file.
-  systemd.services.grafana-ntfy-relay = {
+  # The relay reads the ntfy topic (secret) from this env file. Only the homelab
+  # runs it: it is the one component that talks to an external service
+  # (ntfy.sh), and `dev` must stay isolated.
+  systemd.services.grafana-ntfy-relay = lib.mkIf (config.local.site == "homelab") {
     description = "Reformat Grafana alert webhooks into ntfy notifications";
     wantedBy = [ "multi-user.target" ];
     after = [ "network-online.target" ];
@@ -911,7 +913,7 @@ in
       // actionable and would always trip the rule.
       target {
         name    = "monitoring"
-        address = "https://monitoring.int.esselius.dev"
+        address = "https://monitoring.${config.local.domain}"
         module  = "http_2xx"
       }
     }
@@ -950,7 +952,7 @@ in
     acceptTerms = true;
     defaults = {
       email = "acme@esselius.dev";
-      server = "https://step-ca.int.esselius.dev:8443/acme/internal/directory";
+      server = "https://step-ca.${config.local.domain}:8443/acme/internal/directory";
     };
   };
 
@@ -960,7 +962,7 @@ in
     # this it sees Host `127.0.0.1:3000` and rejects the browser's Origin
     # ("origin not allowed" on datasource queries).
     recommendedProxySettings = true;
-    virtualHosts."monitoring.int.esselius.dev" = {
+    virtualHosts."monitoring.${config.local.domain}" = {
       enableACME = true;
       forceSSL = true;
       locations."/" = {

@@ -7,35 +7,25 @@
 }:
 let
   # Internal-only zone, deliberately NOT delegated from the public esselius.dev
-  # zone: a delegation whose authority is a private address (10.43.0.14) cannot
-  # be followed by a public/forwarding resolver - it returns REFUSED /
-  # "No Reachable Authority". Instead, WireGuard clients set `DNS = 10.43.0.14`,
-  # so CoreDNS answers int.esselius.dev authoritatively and forwards the rest
-  # upstream. See README > Networking.
+  # zone: a delegation whose authority is a private address cannot be followed
+  # by a public/forwarding resolver - it returns REFUSED / "No Reachable
+  # Authority". Instead, WireGuard clients set their resolver to this guest, so
+  # CoreDNS answers the site zone authoritatively. See README > Networking.
+  inv = import ../../inventory.nix;
+  site = config.local.site;
   domain = config.local.domain;
   ns = "ns1.${domain}";
 
-  # The single source of truth for internal names: vpn-bridge address per host.
-  # Extend this map as workloads land; it becomes the seed of the shared
-  # `inventory.nix` the rest of the stack (edge, monitoring) also reads.
-  hosts = {
-    ns1 = "10.43.0.14";
-    coredns = "10.43.0.14";
-    mosquitto = "10.43.0.11";
-    monitoring = "10.43.0.12";
-    # The Kanidm workload serves `idm.int.esselius.dev` (its origin).
-    idm = "10.43.0.13";
-    step-ca = "10.43.0.15";
-    node-red = "10.43.0.16";
-    zigbee2mqtt = "10.43.0.17";
-    home-assistant = "10.43.0.19";
-    # The Attic binary cache workload (serves cache.int.esselius.dev).
-    cache = "10.43.0.20";
-    # Restic REST server all guests push backups to.
-    backup = "10.43.0.18";
-    # Landing page.
-    homepage = "10.43.0.21";
-  };
+  # Records come from inventory.nix, not a hand-maintained map: every service's
+  # alias names resolve to its address in this site, so clients never learn
+  # which host runs a dependency. Moving a service is a `placement` change.
+  aRecords = lib.concatStringsSep "\n" (
+    lib.flatten (
+      lib.mapAttrsToList (
+        service: svc: map (name: "${name} IN A ${inv.ipFor site service}") svc.dns
+      ) inv.services
+    )
+  );
 
   # Non-HTTP service discovery (RFC 2782). Clients that honour SRV can find the
   # broker by name and port; clients that don't (Paho, libpq) still use the A
@@ -47,7 +37,6 @@ let
     };
   };
 
-  aRecords = lib.concatStringsSep "\n" (lib.mapAttrsToList (name: ip: "${name} IN A ${ip}") hosts);
   srvRecords = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
       name: s: "_${name}._tcp IN SRV 0 0 ${toString s.port} ${s.target}.${domain}."
@@ -128,8 +117,9 @@ in
   services.resolved.enable = false;
   networking.nameservers = [ "127.0.0.1" ];
 
-  # Authoritative for int.esselius.dev; forwards everything else upstream so it
-  # can also be used directly as a resolver (WireGuard `DNS = 10.43.0.14`).
+  # Authoritative for the site zone. The homelab also forwards everything else
+  # upstream (so it doubles as a resolver for WireGuard clients); `dev` does not
+  # - it must not reach external services.
   services.coredns = {
     enable = true;
     config = ''
@@ -138,6 +128,8 @@ in
         errors
         log
       }
+    ''
+    + lib.optionalString (site == "homelab") ''
       .:53 {
         forward . 1.1.1.1 9.9.9.9
         cache 30

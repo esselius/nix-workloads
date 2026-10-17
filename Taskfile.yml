@@ -1,5 +1,10 @@
 version: "3"
 
+vars:
+  # Site used by the `dev-*` tasks below (key into inventory.nix).
+  DEV_SITE: dev
+  DEV_ZONE: dev.int.esselius.dev
+
 tasks:
   up:
     desc: "Create/update a workload's instance. Usage: task up -- <name>"
@@ -197,3 +202,111 @@ tasks:
           system="$(nix eval --raw --impure --expr builtins.currentSystem)"
           nix build ".#checks.${system}.${name}"
         fi
+
+  # --- Dev access (macOS) ---------------------------------------------------
+  # The local `dev` site runs behind an incus bridge inside a Colima VM, so the
+  # Mac needs (1) a route to the site subnet and (2) a split-DNS resolver entry
+  # pointing at the site's coredns - then `https://<svc>.dev.int.esselius.dev`
+  # works in a normal browser, exactly like the homelab. Both are derived from
+  # inventory.nix; add a host there (and start its Colima profile) to grow this
+  # to more VMs. These tasks are macOS-only for now.
+
+  dev-route-up:
+    desc: "Add the macOS host route(s) to the dev incus bridge(s)."
+    cmds:
+      - |
+        set -e
+        if [ "$(uname -s)" != "Darwin" ]; then
+          echo "warning: dev-access targets are macOS-only; skipping" >&2
+          exit 0
+        fi
+        command -v colima >/dev/null || { echo "colima not found" >&2; exit 1; }
+        command -v jq >/dev/null || { echo "jq not found" >&2; exit 1; }
+        sudo -v
+        nix eval --impure --json --expr "let i = import ./inventory.nix; in i.sites.{{.DEV_SITE}}.hosts" \
+          | jq -r 'to_entries[] | "\(.value.subnet)\t\(.value.colimaProfile // .key)"' \
+          | while IFS=$'\t' read -r subnet profile; do
+              ip="$(colima status --profile "$profile" --json 2>/dev/null | jq -r '.ip_address // empty')"
+              [ -n "$ip" ] || { echo "colima profile '$profile' is not running" >&2; exit 1; }
+              net="${subnet}.0/24"
+              sudo route -n change -net "$net" "$ip" 2>/dev/null || sudo route -n add -net "$net" "$ip"
+              echo "route  $net -> $ip"
+            done
+
+  dev-route-down:
+    desc: "Remove the macOS host route(s) to the dev incus subnet(s)."
+    cmds:
+      - |
+        if [ "$(uname -s)" != "Darwin" ]; then
+          echo "warning: dev-access targets are macOS-only; skipping" >&2
+          exit 0
+        fi
+        sudo -v
+        nix eval --impure --json --expr "let i = import ./inventory.nix; in i.sites.{{.DEV_SITE}}.hosts" \
+          | jq -r '.[].subnet' | while read -r subnet; do
+              sudo route -n delete -net "${subnet}.0/24" 2>/dev/null \
+                && echo "removed ${subnet}.0/24" || echo "no route for ${subnet}.0/24"
+            done
+
+  dev-dns-up:
+    desc: "Point macOS at the dev coredns for {{.DEV_ZONE}}."
+    cmds:
+      - |
+        set -e
+        if [ "$(uname -s)" != "Darwin" ]; then
+          echo "warning: dev-access targets are macOS-only; skipping" >&2
+          exit 0
+        fi
+        sudo -v
+        cfg="$(nix eval --impure --json --expr "let i = import ./inventory.nix; in { hosts = i.sites.{{.DEV_SITE}}.hosts; coredns = i.services.coredns.ip; }")"
+        f="/etc/resolver/{{.DEV_ZONE}}"
+        sudo mkdir -p /etc/resolver
+        {
+          echo "$cfg" | jq -r '.hosts[].subnet' \
+            | while read -r s; do echo "nameserver ${s}.$(echo "$cfg" | jq -r .coredns)"; done
+          echo "port 53"
+        } | sudo tee "$f" >/dev/null
+        sudo chmod 644 "$f"
+        sudo dscacheutil -flushcache
+        sudo killall -HUP mDNSResponder 2>/dev/null || true
+        echo "wrote $f:"
+        sudo cat "$f"
+
+  dev-dns-down:
+    desc: "Remove the dev resolver entry and flush macOS DNS."
+    cmds:
+      - |
+        if [ "$(uname -s)" != "Darwin" ]; then
+          echo "warning: dev-access targets are macOS-only; skipping" >&2
+          exit 0
+        fi
+        sudo -v
+        sudo rm -f "/etc/resolver/{{.DEV_ZONE}}"
+        sudo dscacheutil -flushcache
+        sudo killall -HUP mDNSResponder 2>/dev/null || true
+        echo "removed /etc/resolver/{{.DEV_ZONE}}"
+
+  dev-access-up:
+    desc: "Route + DNS so the Mac can browse *.dev.int.esselius.dev like the homelab."
+    deps: [dev-route-up, dev-dns-up]
+
+  dev-access-down:
+    desc: "Tear down the dev route(s) and DNS resolver entry."
+    deps: [dev-route-down, dev-dns-down]
+
+  dev-access-status:
+    desc: "Show dev routes, resolver entry, and a sample lookup."
+    cmds:
+      - |
+        if [ "$(uname -s)" != "Darwin" ]; then
+          echo "warning: dev-access targets are macOS-only; skipping" >&2
+          exit 0
+        fi
+        nix eval --impure --json --expr "let i = import ./inventory.nix; in i.sites.{{.DEV_SITE}}.hosts" \
+          | jq -r '.[].subnet' | while read -r s; do
+              route -n get "${s}.0/24" 2>/dev/null | grep -E 'destination|gateway' || echo "no route for ${s}.0/24"
+            done
+        echo "--- /etc/resolver/{{.DEV_ZONE}}"
+        sudo cat "/etc/resolver/{{.DEV_ZONE}}" 2>/dev/null || echo "(none)"
+        echo "--- lookup"
+        dig +short "home-assistant.{{.DEV_ZONE}}" || true

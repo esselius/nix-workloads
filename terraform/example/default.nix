@@ -4,7 +4,7 @@ let
   # target, and a cross-host move keeps the same IP (provided the destination
   # host's bridge is the same subnet). Keep it unique per workload and outside
   # any host-reserved range.
-  staticIp = "10.43.0.10";
+  staticIp = (import ../../inventory.nix).ipFor config.local.site "example";
 in
 {
   # Skeleton workload. To add a new one, copy this directory:

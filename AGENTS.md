@@ -19,11 +19,24 @@ down.
      profiles, resource limits, devices.
   3. **OS** - `guests/<name>/default.nix`, a `nixosConfigurations.<name>` system
      deployed into the running instance with `nixos-rebuild`.
-- **Shared knobs.** `modules/local.nix` holds the shared, overridable knobs
-  (domain, CA, ACME, cache, LAN) with Pi defaults. Guests must read
-  `config.local.*`, never hard-code `int.esselius.dev` / the Esselius CA / the
-  Attic URL, so a different environment (e.g. a local incus VM on the Mac) is a
-  matter of setting those options rather than forking the configs.
+- **Sites + inventory.** `inventory.nix` is the single source of truth for
+  *where* each workload runs and is addressed: a *site* is one DNS zone + address
+  space (`homelab` = the Pi, `dev` = a local incus VM), hosts are incus servers,
+  and `placement` maps a service to a host. The zone is **flat** - a service has
+  one name (`mosquitto.<zone>`) whichever host runs it - so moving a workload is
+  a `placement` change, never a workload change. Never hard-code a domain or a
+  `10.43` address in a guest or a `terraform/<name>`: read `config.local.*`
+  (`domain`, `realm`, `dnsAddress`, ...) from `modules/local.nix` / the site's
+  host, and add new services to `inventory.nix`. The flake builds each guest for
+  both sites (`<name>` and `<name>-dev`; same for terranix).
+- **Dev testbed is macOS-only and reuses the production CA.** `task dev-access-up
+  / -down / -status` (guarded by `uname -s = Darwin`) add the Mac's route to the
+  dev subnet and a `/etc/resolver/<dev zone>` entry pointing at the dev coredns -
+  no `/etc/hosts` edits. The dev subnet must not be `10.43.0.0/24` (that is the
+  Mac's WireGuard route to the Pi). The dev step-ca reuses the *production*
+  intermediate (`certs/intermediate_ca.crt` + `secrets/step-ca.yaml`), so dev
+  certs chain to the already-trusted Esselius root; the trade-off is a local CA
+  clone that can mint production-trusted certs.
 - Prefer small, explicit modules over abstractions. `terraform/common.nix` holds
   the only shared terranix config (the incus provider + remote); every workload
   is a sibling directory under `terraform/`.

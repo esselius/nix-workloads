@@ -87,15 +87,24 @@
       };
       metaFor = name: guestMeta.${name} or { sops = true; };
 
-      # One workload's system.
+      # `-dev` variants are the same guest systems built for the local testbed
+      # site (see inventory.nix); they share every module and differ only in the
+      # `site` specialArg, so components can be trialled locally before a
+      # homelab rollout.
+      devAttrs = map (name: "${name}-dev") workloads;
+      allAttrs = workloads ++ devAttrs;
+
+      # One workload's system for a site.
       mkSystem =
-        name:
+        site: name:
         let
           meta = metaFor name;
         in
         nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
-          specialArgs = meta.specialArgs or { };
+          specialArgs = (meta.specialArgs or { }) // {
+            inherit site;
+          };
           modules =
             lib.optionals (meta.sops or true) [
               sops-nix.nixosModules.sops
@@ -124,7 +133,11 @@
         "aarch64-linux"
       ];
 
-      flake.nixosConfigurations = lib.genAttrs workloads mkSystem;
+      # Homelab systems keep their bare names; the local testbed variants are
+      # suffixed `-dev`.
+      flake.nixosConfigurations =
+        lib.genAttrs workloads (mkSystem "homelab")
+        // lib.listToAttrs (map (name: lib.nameValuePair "${name}-dev" (mkSystem "dev" name)) workloads);
 
       perSystem =
         {
@@ -174,7 +187,7 @@
           # guest (`task check -- <name>`) instead of every workload. Each
           # forces this guest's toplevel and its terranix config (eval, not
           # build): it fails if either stops evaluating.
-          evalChecks = lib.genAttrs workloads (
+          evalChecks = lib.genAttrs allAttrs (
             name:
             builtins.deepSeq
               [
@@ -189,13 +202,28 @@
           );
         in
         {
-          terranix.terranixConfigurations = lib.genAttrs workloads (name: {
-            terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
-            modules = [
-              ./terraform/common.nix
-              ./terraform/${name}
-            ];
-          });
+          terranix.terranixConfigurations =
+            lib.genAttrs workloads (name: {
+              terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+              modules = [
+                ./terraform/common.nix
+                ./terraform/sites/homelab.nix
+                ./terraform/${name}
+              ];
+            })
+            // lib.listToAttrs (
+              map (
+                name:
+                lib.nameValuePair "${name}-dev" {
+                  terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+                  modules = [
+                    ./terraform/common.nix
+                    ./terraform/sites/dev.nix
+                    ./terraform/${name}
+                  ];
+                }
+              ) workloads
+            );
 
           devShells.default = pkgs.mkShell {
             packages = [
@@ -203,6 +231,10 @@
               pkgs.terranix
               # Drive the incus remotes from the Mac for bootstrap/debugging.
               pkgs.incus-lts.client
+              # `task dev-access-*`: parse `colima status --json` and look up
+              # dev names.
+              pkgs.jq
+              pkgs.bind
               pkgs.nixfmt
               # Edit secrets and derive age recipients from SSH keys.
               pkgs.sops
@@ -243,7 +275,7 @@
               map (name: {
                 name = name;
                 path = evalChecks.${name};
-              }) workloads
+              }) allAttrs
             );
 
             # Formatting gate, matching `nix fmt`.

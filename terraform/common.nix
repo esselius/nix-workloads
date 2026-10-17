@@ -1,11 +1,23 @@
 { lib, config, ... }:
+let
+  inv = import ../inventory.nix;
+  siteCfg = inv.sites.${config.local.site};
+  host = siteCfg.hosts.${siteCfg.defaultHost};
+in
 {
-  # The managed incus bridge workloads attach to for WireGuard-reachable
-  # addressing. Single source of truth for the workload modules; must match
-  # nix-homelab-hosts `local.incus.network.vpn.bridge`.
+  # Which site this terranix config targets. The homelab is the default; a
+  # `terraform/sites/dev.nix` module sets `local.site = "dev"`. Everything
+  # below (bridge, pool, incus remote, LAN NIC) is derived from the inventory
+  # so a workload's terraform never encodes a physical host.
+  options.local.site = lib.mkOption {
+    type = lib.types.str;
+    default = "homelab";
+    description = "Environment (key into inventory.nix).";
+  };
+
+  # Managed incus bridge workloads attach to.
   options.local.vpnBridge = lib.mkOption {
     type = lib.types.str;
-    default = "incusbr-vpn";
     description = "Managed incus bridge that workloads attach to.";
   };
 
@@ -20,46 +32,57 @@
   # incus storage pool backing workload data volumes (persistent state).
   options.local.storagePool = lib.mkOption {
     type = lib.types.str;
-    default = "default";
     description = "incus storage pool for workload data volumes.";
   };
 
-  # The macvlan `eth1` LAN NIC some workloads carry.
+  # The macvlan `eth1` LAN NIC some workloads carry (homelab only).
   options.local.lan.enable = lib.mkOption {
     type = lib.types.bool;
-    default = true;
     description = "Attach the macvlan eth1 LAN NIC.";
   };
 
-  # Which incus server OpenTofu drives. Default is the rpi5-8gb remote.
+  # Which incus server OpenTofu drives, from the site's host in the inventory.
   options.local.incus = {
     defaultRemote = lib.mkOption {
       type = lib.types.str;
-      default = "rpi5-8gb";
       description = "incus remote the provider uses by default.";
     };
     remote = lib.mkOption {
       type = lib.types.listOf lib.types.attrs;
-      default = [
-        {
-          name = "rpi5-8gb";
-          address = "https://rpi5-8gb.x.esselius.dev:8443";
-          authentication_type = "tls";
-        }
-      ];
+      default = [ ];
       description = "Inline remotes declared to the provider (empty = use ~/.config/incus).";
     };
     generateClientCertificates = lib.mkOption {
       type = lib.types.bool;
-      default = true;
     };
     acceptRemoteCertificate = lib.mkOption {
       type = lib.types.bool;
-      default = true;
     };
   };
 
   config = {
+    local.vpnBridge = lib.mkDefault host.bridge;
+    local.storagePool = lib.mkDefault host.pool;
+    local.lan.enable = lib.mkDefault (config.local.site == "homelab");
+
+    local.incus.defaultRemote = lib.mkDefault host.remote;
+    # The homelab remote is declared inline (the Mac has no local incus daemon);
+    # `dev` uses whatever the local `colima` remote is configured to be.
+    local.incus.remote = lib.mkDefault (
+      if config.local.site == "homelab" then
+        [
+          {
+            name = "rpi5-8gb";
+            address = "https://rpi5-8gb.x.esselius.dev:8443";
+            authentication_type = "tls";
+          }
+        ]
+      else
+        [ ]
+    );
+    local.incus.generateClientCertificates = lib.mkDefault (config.local.site == "homelab");
+    local.incus.acceptRemoteCertificate = lib.mkDefault true;
+
     terraform.required_providers.incus = {
       source = "lxc/incus";
       version = "~> 1.2";

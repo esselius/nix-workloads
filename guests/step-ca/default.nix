@@ -99,7 +99,7 @@
       key = config.sops.secrets.intermediate_ca_key.path;
 
       # SAN on step-ca's own TLS cert; must match the coredns zone record.
-      dnsNames = [ "step-ca.int.esselius.dev" ];
+      dnsNames = [ "step-ca.${config.local.domain}" ];
 
       db = {
         type = "badgerv2";
@@ -108,7 +108,7 @@
 
       # A single ACME provisioner for the internal CA. The name is the path
       # segment in the directory URL:
-      #   https://step-ca.int.esselius.dev:8443/acme/internal/directory
+      #   https://step-ca.<site zone>:8443/acme/internal/directory
       authority.provisioners = [
         {
           type = "ACME";

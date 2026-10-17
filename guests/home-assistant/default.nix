@@ -157,14 +157,14 @@
     acceptTerms = true;
     defaults = {
       email = "acme@esselius.dev";
-      server = "https://step-ca.int.esselius.dev:8443/acme/internal/directory";
+      server = "https://step-ca.${config.local.domain}:8443/acme/internal/directory";
     };
   };
 
   services.nginx = {
     enable = true;
     recommendedProxySettings = true;
-    virtualHosts."home-assistant.int.esselius.dev" = {
+    virtualHosts."home-assistant.${config.local.domain}" = {
       enableACME = true;
       forceSSL = true;
       locations."/" = {

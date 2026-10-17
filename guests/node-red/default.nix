@@ -84,6 +84,9 @@ in
     NODE_PATH = "${passportOpenidconnect}/lib/node_modules";
     NODE_RED_OIDC_SECRET_FILE = config.sops.secrets.node_red_oidc_secret.path;
     NODE_RED_CREDENTIAL_SECRET_FILE = config.sops.secrets.node_red_credential_secret.path;
+    # Site-derived OIDC URLs read by settings.js (Kanidm issuer + callback).
+    NODE_RED_IDM_URL = "https://idm.${config.local.domain}";
+    NODE_RED_PUBLIC_URL = "https://node-red.${config.local.domain}";
   };
 
   services.node-red = {
@@ -104,14 +107,14 @@ in
     acceptTerms = true;
     defaults = {
       email = "acme@esselius.dev";
-      server = "https://step-ca.int.esselius.dev:8443/acme/internal/directory";
+      server = "https://step-ca.${config.local.domain}:8443/acme/internal/directory";
     };
   };
 
   services.nginx = {
     enable = true;
     recommendedProxySettings = true;
-    virtualHosts."node-red.int.esselius.dev" = {
+    virtualHosts."node-red.${config.local.domain}" = {
       enableACME = true;
       forceSSL = true;
       locations."/" = {
