@@ -40,7 +40,10 @@ let
       defaultHost = "colima";
       hosts = {
         colima = {
-          remote = "colima";
+          # Colima's incus remote for a profile named `<profile>` is
+          # `colima-<profile>` (the default profile is just `colima`) - read it
+          # from `incus remote list` after `colima start --profile dev`.
+          remote = "colima-dev";
           subnet = "10.60.0";
           bridge = "incusbr-vpn";
           pool = "default";
@@ -48,7 +51,7 @@ let
           colimaProfile = "dev";
         };
         # A second VM for cross-host/failure tests: add it and set `placement`.
-        #   colima-b = { remote = "colima-b"; subnet = "10.61.0"; bridge = "incusbr-vpn"; pool = "default"; colimaProfile = "dev-b"; };
+        #   colima-b = { remote = "colima-dev-b"; subnet = "10.61.0"; bridge = "incusbr-vpn"; pool = "default"; colimaProfile = "dev-b"; };
       };
       placement = { };
     };
