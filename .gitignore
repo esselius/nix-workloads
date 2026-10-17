@@ -7,3 +7,7 @@ terraform.tfstate.*
 *.tfstate
 *.tfstate.*
 terraform/*/config.tf.json
+terraform/*/*/config.tf.json
+
+# Local `dev` env terranix state (never committed).
+terraform/dev/

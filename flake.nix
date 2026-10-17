@@ -94,6 +94,23 @@
       devAttrs = map (name: "${name}-dev") workloads;
       allAttrs = workloads ++ devAttrs;
 
+      # Environments for the `tf` wrapper / Taskfile: each maps to the guest
+      # system's attr suffix, its terranix state dir, and its incus remote.
+      # Rendered into the `tf` shell app so it needs no runtime Nix eval.
+      inv = import ./inventory.nix;
+      defaultEnv = "homelab";
+      envCases = lib.concatStringsSep "\n" (
+        lib.mapAttrsToList (
+          envName: cfg:
+          let
+            host = cfg.hosts.${cfg.defaultHost};
+            suffix = if envName == defaultEnv then "" else "-${envName}";
+            dir = if envName == defaultEnv then "terraform" else "terraform/${envName}";
+          in
+          ''${envName}) attr="$name${suffix}"; workdir="${dir}/$name"; remote="${host.remote}" ;;''
+        ) inv.envs
+      );
+
       # One workload's system for a env.
       mkSystem =
         env: name:
@@ -155,11 +172,14 @@
               # Used by the instance `local-exec` provisioner to seed the
               # guest's root SSH key on create.
               pkgs.incus-lts.client
+              # `tf` evaluates the flake to build the terranix JSON.
+              pkgs.nix
             ];
             text = ''
               if [ $# -lt 2 ]; then
-                echo "Usage: tf <name> <init|plan|apply|destroy> [tofu args...]"
-                echo "Available: ${lib.concatStringsSep " " workloads}"
+                echo "Usage: [ENV=<env>] tf <name> <init|plan|apply|destroy> [tofu args...]"
+                echo "Workloads: ${lib.concatStringsSep " " workloads}"
+                echo "Envs: ${lib.concatStringsSep " " (lib.attrNames inv.envs)}"
                 exit 1
               fi
               name="$1"
@@ -171,8 +191,22 @@
                 *) echo "Unknown action: $action (init|plan|apply|destroy)"; exit 1 ;;
               esac
 
-              json="$(nix build ".#$name.config" --no-link --print-out-paths)"
-              workdir="terraform/$name"
+              # Which environment to target. `dev` suffixes the guest attr and
+              # keeps its terranix state under terraform/<env>/.
+              env="''${ENV:-${defaultEnv}}"
+              attr=""
+              workdir=""
+              remote=""
+              case "$env" in
+              ${envCases}
+                *) echo "Unknown ENV: $env" >&2; exit 1 ;;
+              esac
+
+              # The terranix `local-exec` provisioner calls the bare `incus`
+              # CLI; pin it (and any manual debugging) to the env's server.
+              export INCUS_REMOTE="$remote"
+
+              json="$(nix build ".#$attr.config" --no-link --print-out-paths)"
               mkdir -p "$workdir"
               ln -sf "$json" "$workdir/config.tf.json"
               cd "$workdir"
