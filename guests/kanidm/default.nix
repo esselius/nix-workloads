@@ -66,11 +66,11 @@
     acceptTerms = true;
     defaults = {
       email = "acme@esselius.dev";
-      server = "https://step-ca.int.esselius.dev:8443/acme/internal/directory";
+      server = "https://step-ca.${config.local.domain}:8443/acme/internal/directory";
     };
     # http-01 via lego's standalone server on :80 (Kanidm itself only serves
     # :8443). group=kanidm so the daemon can read the cert; restart it on renew.
-    certs."idm.int.esselius.dev" = {
+    certs."idm.${config.local.domain}" = {
       listenHTTP = ":80";
       group = "kanidm";
       reloadServices = [ "kanidm.service" ];
@@ -111,26 +111,28 @@
     # configure the kanidm client on the guest.
     client = {
       enable = true;
-      settings.uri = "https://idm.int.esselius.dev";
+      settings.uri = "https://idm.${config.local.domain}";
     };
 
     server = {
       enable = true;
       settings = {
-        # Serve on :443 so the port-less origin/URLs (https://idm.int.esselius.dev)
+        # Serve on :443 so the port-less origin/URLs (https://idm.<env zone>)
         # match; the module grants CAP_NET_BIND_SERVICE.
         bindaddress = "0.0.0.0:443";
-        origin = "https://idm.int.esselius.dev";
-        # The managed domain; users are <name>@int.esselius.dev.
-        domain = "int.esselius.dev";
-        tls_chain = "/var/lib/acme/idm.int.esselius.dev/fullchain.pem";
-        tls_key = "/var/lib/acme/idm.int.esselius.dev/key.pem";
+        origin = "https://idm.${config.local.domain}";
+        # The managed identity realm, which stays `int.esselius.dev` even in dev
+        # (a restored database owns those identities); only the URL uses the
+        # env zone.
+        domain = config.local.realm;
+        tls_chain = "/var/lib/acme/idm.${config.local.domain}/fullchain.pem";
+        tls_key = "/var/lib/acme/idm.${config.local.domain}/key.pem";
       };
     };
 
     provision = {
       enable = true;
-      instanceUrl = "https://idm.int.esselius.dev";
+      instanceUrl = "https://idm.${config.local.domain}";
       # First boot serves the acme self-signed placeholder until the step-ca
       # order lands; don't fail the provisioning health-check on that.
       acceptInvalidCerts = true;
@@ -155,8 +157,8 @@
 
       systems.oauth2.grafana = {
         displayName = "Grafana";
-        originUrl = "https://monitoring.int.esselius.dev/login/generic_oauth";
-        originLanding = "https://monitoring.int.esselius.dev/";
+        originUrl = "https://monitoring.${config.local.domain}/login/generic_oauth";
+        originLanding = "https://monitoring.${config.local.domain}/";
         basicSecretFile = config.sops.secrets.grafana_oidc_secret.path;
         scopeMaps.grafana_users = [
           "openid"
@@ -177,8 +179,8 @@
 
       systems.oauth2.node-red = {
         displayName = "Node-RED";
-        originUrl = "https://node-red.int.esselius.dev/auth/strategy/callback/";
-        originLanding = "https://node-red.int.esselius.dev/";
+        originUrl = "https://node-red.${config.local.domain}/auth/strategy/callback/";
+        originLanding = "https://node-red.${config.local.domain}/";
         basicSecretFile = config.sops.secrets.node_red_oidc_secret.path;
         # passport-openidconnect doesn't send a PKCE challenge; Kanidm enforces
         # it by default.
@@ -193,8 +195,8 @@
 
       systems.oauth2.oauth2-proxy = {
         displayName = "Zigbee2MQTT";
-        originUrl = "https://zigbee2mqtt.int.esselius.dev/oauth2/callback";
-        originLanding = "https://zigbee2mqtt.int.esselius.dev/";
+        originUrl = "https://zigbee2mqtt.${config.local.domain}/oauth2/callback";
+        originLanding = "https://zigbee2mqtt.${config.local.domain}/";
         basicSecretFile = config.sops.secrets.oauth2_proxy_secret.path;
         scopeMaps.homelab_users = [
           "openid"
@@ -206,8 +208,8 @@
 
       systems.oauth2.homepage = {
         displayName = "Homepage";
-        originUrl = "https://homepage.int.esselius.dev/oauth2/callback";
-        originLanding = "https://homepage.int.esselius.dev/";
+        originUrl = "https://homepage.${config.local.domain}/oauth2/callback";
+        originLanding = "https://homepage.${config.local.domain}/";
         basicSecretFile = config.sops.secrets.homepage_oidc_secret.path;
         scopeMaps.homelab_users = [
           "openid"
@@ -224,8 +226,8 @@
   # the acme self-signed service, which creates the file immediately; the real
   # cert from step-ca then replaces it (reloadServices restarts kanidm).
   systemd.services.kanidm = {
-    after = [ "acme-idm.int.esselius.dev.service" ];
-    wants = [ "acme-idm.int.esselius.dev.service" ];
+    after = [ "acme-idm.${config.local.domain}.service" ];
+    wants = [ "acme-idm.${config.local.domain}.service" ];
   };
 
   # :80 for the ACME challenge, :443 for Kanidm itself, plus SSH - only on the

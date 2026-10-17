@@ -3,7 +3,7 @@ let
   # Metrics + logs + dashboards. Pinned on the vpn bridge; Alloy agents on the
   # hosts and guests push here, and Grafana is reached by name
   # (`monitoring.int.esselius.dev`, an A record in the coredns zone).
-  staticIp = "10.43.0.12";
+  staticIp = (import ../../inventory.nix).ipFor config.local.env "monitoring";
 in
 {
   # Custom storage volume for the monitoring stack's state, on the host's

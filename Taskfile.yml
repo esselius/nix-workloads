@@ -1,5 +1,10 @@
 version: "3"
 
+vars:
+  # Env used by the `dev-*` tasks below (key into inventory.nix).
+  DEV_ENV: dev
+  DEV_ZONE: dev.int.esselius.dev
+
 tasks:
   up:
     desc: "Create/update a workload's instance. Usage: task up -- <name>"
@@ -17,9 +22,13 @@ tasks:
       - tf {{index .CLI_ARGS_LIST 0}} plan
 
   bootstrap:
-    desc: "Re-seed root SSH on an instance if the provisioner did not run. Usage: task bootstrap -- <name>"
+    desc: "Re-seed root SSH on an instance if the provisioner did not run. Usage: [ENV=dev] task bootstrap -- <name>"
     cmds:
-      - incus file push --uid 0 --gid 0 --mode 600 ~/.ssh/id_ed25519.pub {{index .CLI_ARGS_LIST 0}}/root/.ssh/authorized_keys --create-dirs
+      - |
+        name="{{index .CLI_ARGS_LIST 0}}"
+        env="${ENV:-homelab}"
+        remote="$(nix eval --raw --impure --expr "let i = import ./inventory.nix; e = i.envs.${env}; in (builtins.getAttr e.defaultHost e.hosts).remote")"
+        INCUS_REMOTE="$remote" incus file push --uid 0 --gid 0 --mode 600 ~/.ssh/id_ed25519.pub "$name/root/.ssh/authorized_keys" --create-dirs
 
   onboard:
     desc: "Trust a guest's host key for sops, rekey its secret, and seed Attic cache trust. Usage: task onboard -- <name>"
@@ -27,6 +36,15 @@ tasks:
       - |
         set -e
         name="{{index .CLI_ARGS_LIST 0}}"
+        env="${ENV:-homelab}"
+
+        # `dev` has no Attic to seed, and its sops overlay (re-keying secrets
+        # for the dev guest's host key) is a follow-up. Guests without sops
+        # (coredns) need nothing here.
+        if [ "$env" != homelab ]; then
+          echo "onboard: '$env' env - no cache to seed and no secrets for coredns; skipping"
+          exit 0
+        fi
 
         # Read the guest's SSH host key through the incus API (no network/SSH
         # needed) as an age recipient.
@@ -85,52 +103,82 @@ tasks:
       - |
         set -e
         name="{{index .CLI_ARGS_LIST 0}}"
+        env="${ENV:-homelab}"
+        attr="$name"
+        [ "$env" = homelab ] || attr="$name-$env"
+        remote="$(nix eval --raw --impure --expr "let i = import ./inventory.nix; e = i.envs.${env}; in (builtins.getAttr e.defaultHost e.hosts).remote")"
 
-        ip="$(incus config device get "$name" eth0 ipv4.address 2>/dev/null || true)"
+        ip="$(INCUS_REMOTE="$remote" incus config device get "$name" eth0 ipv4.address 2>/dev/null || true)"
         if [ -z "$ip" ]; then
-          ip="$(incus list "$name" -c 4 --format csv | head -1 | tr -d '\"')"
+          ip="$(INCUS_REMOTE="$remote" incus list "$name" -c 4 --format csv | head -1 | tr -d '\"')"
           ip="${ip%% *}"
         fi
         if [ -z "$ip" ]; then
           echo "no private IPv4 for instance '$name' - is it running?" >&2
           exit 1
         fi
-        echo "deploying to $name ($ip)"
+        echo "deploying $attr to $name ($ip)"
 
         ca="${TMPDIR:-/tmp}/nix-workloads-ca-bundle.crt"
         base="$(nix config show ssl-cert-file 2>/dev/null || true)"
         if [ -z "$base" ] || [ ! -e "$base" ]; then base=/etc/ssl/certs/ca-certificates.crt; fi
         cat "$base" certs/root_ca.crt > "$ca"
 
-        system="$(nix build ".#nixosConfigurations.$name.config.system.build.toplevel" --no-link --print-out-paths --option ssl-cert-file "$ca" --option narinfo-cache-negative-ttl 0)"
+        system="$(nix build ".#nixosConfigurations.$attr.config.system.build.toplevel" --no-link --print-out-paths --option ssl-cert-file "$ca" --option narinfo-cache-negative-ttl 0)"
 
-        # attic/step-ca/coredns bootstrap the cache, so a miss there may still copy.
-        case " attic step-ca coredns " in
-          *" $name "*)
-            echo "bootstrap workload: a cache miss may copy"
-            ;;
-          *)
-            if ! ssh -o StrictHostKeyChecking=accept-new "root@$ip" \
-              nix-store --realise "$system" \
-              --option download-attempts 1 --option connect-timeout 5 \
-              --option narinfo-cache-negative-ttl 0; then
-              echo "error: $name cannot substitute its closure from the cache." >&2
-              echo "       run 'task cache-push -- $name' first" >&2
-              exit 1
-            fi
-            ;;
-        esac
+        use_subs="--use-substitutes"
+        ssh_opts="-o StrictHostKeyChecking=accept-new"
+        if [ "$env" = homelab ]; then
+          # attic/step-ca/coredns bootstrap the cache, so a miss there may still copy.
+          case " attic step-ca coredns " in
+            *" $name "*)
+              echo "bootstrap workload: a cache miss may copy"
+              ;;
+            *)
+              if ! ssh -o StrictHostKeyChecking=accept-new "root@$ip" \
+                nix-store --realise "$system" \
+                --option download-attempts 1 --option connect-timeout 5 \
+                --option narinfo-cache-negative-ttl 0; then
+                echo "error: $name cannot substitute its closure from the cache." >&2
+                echo "       run 'task cache-push -- $name' first" >&2
+                exit 1
+              fi
+              ;;
+          esac
+        else
+          # No Attic in `dev`; the closure is copied from the builder. There is
+          # also no route to the guest subnet, so SSH jumps through the VM.
+          use_subs=""
+          profile="$(nix eval --raw --impure --expr "let i = import ./inventory.nix; e = i.envs.${env}; in (builtins.getAttr e.defaultHost e.hosts).colimaProfile")"
+          sshcfg="${TMPDIR:-/tmp}/nix-workloads-colima-ssh.cfg"
+          colima ssh-config --profile "$profile" > "$sshcfg"
+          ssh_opts="-F $sshcfg -J colima-$profile -o StrictHostKeyChecking=accept-new"
+          # sops in `dev` decrypts with the Mac's age identity, not a per-guest
+          # host key - push it before activation (harmless for guests without
+          # sops).
+          seedfile="${TMPDIR:-/tmp}/nix-workloads-dev-age.key"
+          ssh-to-age -private-key -i "$HOME/.ssh/id_ed25519" > "$seedfile"
+          INCUS_REMOTE="$remote" incus file push --uid 0 --gid 0 --mode 400 "$seedfile" \
+            "$name/etc/nix-workloads/dev-age.key" --create-dirs
+          rm -f "$seedfile"
+          echo "$env env: no cache; copying the closure via the $profile VM"
+        fi
 
         NIX_CONFIG="ssl-cert-file = $ca" \
-        NIX_SSHOPTS="-o StrictHostKeyChecking=accept-new" \
-          nixos-rebuild switch --flake ".#$name" \
-          --target-host "root@$ip" --use-substitutes
+        NIX_SSHOPTS="$ssh_opts" \
+        TMPDIR=/tmp \
+          nixos-rebuild switch --flake ".#$attr" \
+          --target-host "root@$ip" $use_subs
 
   cache-push:
     desc: "Push a workload's system closure to the Attic cache. Usage: task cache-push -- <name>"
     cmds:
       - |
         name="{{index .CLI_ARGS_LIST 0}}"
+        if [ "${ENV:-homelab}" != homelab ]; then
+          echo "cache-push: '${ENV:-homelab}' env has no Attic cache; nothing to push"
+          exit 0
+        fi
 
         ca="${TMPDIR:-/tmp}/nix-workloads-ca-bundle.crt"
         base="$(nix config show ssl-cert-file 2>/dev/null || true)"
@@ -149,7 +197,7 @@ tasks:
         roots="coredns step-ca"
         rest=$(for d in terraform/*/; do
           n=${d#terraform/}; n=${n%/}
-          case " $roots example " in *" $n "*) ;; *) echo "$n";; esac
+          case " $roots example edge envs " in *" $n "*) ;; *) echo "$n";; esac
         done)
         for name in $roots $rest; do
           start=$(date +%s)
@@ -166,7 +214,7 @@ tasks:
         roots="coredns step-ca"
         rest=$(for d in terraform/*/; do
           n=${d#terraform/}; n=${n%/}
-          case " $roots example " in *" $n "*) ;; *) echo "$n";; esac
+          case " $roots example edge envs " in *" $n "*) ;; *) echo "$n";; esac
         done)
         for name in $roots $rest; do
           start=$(date +%s)
@@ -196,4 +244,131 @@ tasks:
         else
           system="$(nix eval --raw --impure --expr builtins.currentSystem)"
           nix build ".#checks.${system}.${name}"
+        fi
+
+  # --- Dev access (macOS) ---------------------------------------------------
+  # The local `dev` env runs behind an incus bridge inside a Colima VM. Routing
+  # the Mac into that subnet breaks its default route (macOS/vmnet), so nothing
+  # touches the Mac's routing table: a `dev` `edge` workload does not terminate
+  # TLS - it SNI-routes to the guests - and its `proxy` device publishes it on
+  # the VM's own address (which the Mac already reaches). `dev-dns-up` maps
+  # *.dev.int.esselius.dev to that VM address in /etc/hosts, and `ENV=dev`
+  # deploys jump through the VM. These tasks are macOS-only for now.
+
+  dev-bootstrap:
+    desc: "Create the dev incus bridge(s) + container/vpn profiles on the dev VM(s)."
+    cmds:
+      - |
+        set -e
+        if [ "$(uname -s)" != "Darwin" ]; then
+          echo "warning: dev-* targets are macOS-only; skipping" >&2
+          exit 0
+        fi
+        command -v jq >/dev/null || { echo "jq not found" >&2; exit 1; }
+        cfg="$(nix eval --impure --json --expr "let i = import ./inventory.nix; in { hosts = i.envs.{{.DEV_ENV}}.hosts; dns = i.ipFor \"{{.DEV_ENV}}\" \"coredns\"; }")"
+        dns="$(echo "$cfg" | jq -r .dns)"
+        echo "$cfg" | jq -r '.hosts | to_entries[] | "\(.value.remote)\t\(.value.subnet)\t\(.value.bridge)\t\(.value.colimaProfile // .key)"' \
+          | while IFS=$'\t' read -r remote subnet bridge profile; do
+              if ! INCUS_REMOTE="$remote" incus network show "$bridge" >/dev/null 2>&1; then
+                INCUS_REMOTE="$remote" incus network create "$bridge" \
+                  ipv4.address="${subnet}.1/24" ipv4.nat=false ipv6.address=none
+              fi
+              # Advertise the env's coredns via DHCP so guests (including step-ca
+              # during an ACME http-01 challenge) resolve <svc>.<zone>.
+              INCUS_REMOTE="$remote" incus network set "$bridge" dns.nameservers="$dns"
+              INCUS_REMOTE="$remote" incus profile show container >/dev/null 2>&1 \
+                || INCUS_REMOTE="$remote" incus profile create container
+              if ! INCUS_REMOTE="$remote" incus profile show vpn >/dev/null 2>&1; then
+                INCUS_REMOTE="$remote" incus profile create vpn
+                INCUS_REMOTE="$remote" incus profile device add vpn eth0 nic network="$bridge"
+              fi
+              # The VM forwards the Mac's packets to the routed dev subnet; if it
+              # also emits ICMP redirects, macOS installs them and clobbers its
+              # default route (breaks web). Turn them off.
+              colima ssh --profile "$profile" -- sudo -n sh -c '
+                for i in all default col0 eth0 '"$bridge"'; do
+                  sysctl -w net.ipv4.conf."$i".send_redirects=0 >/dev/null 2>&1 || true
+                done' 2>/dev/null || true
+              echo "bootstrapped $remote: $bridge ${subnet}.1/24 (dns $dns) + container/vpn (redirects off)"
+            done
+
+  dev-dns-up:
+    desc: "Map *.dev.int.esselius.dev to the dev VM via a managed /etc/hosts block."
+    cmds:
+      - |
+        set -e
+        if [ "$(uname -s)" != "Darwin" ]; then
+          echo "warning: dev-access targets are macOS-only; skipping" >&2
+          exit 0
+        fi
+        for b in jq colima; do
+          command -v "$b" >/dev/null || { echo "$b not found (run in the devshell)" >&2; exit 1; }
+        done
+        sudo -v
+        profile="$(nix eval --impure --json --expr "let i = import ./inventory.nix; in i.envs.{{.DEV_ENV}}.hosts" \
+          | jq -r 'to_entries[0] | (.value.colimaProfile // .key)')"
+        vmip="$(colima status --profile "$profile" --json 2>/dev/null | jq -r '.ip_address // empty')"
+        [ -n "$vmip" ] || { echo "colima profile '$profile' is not running" >&2; exit 1; }
+        zone="$(nix eval --raw --impure --expr 'let i = import ./inventory.nix; in i.envs.{{.DEV_ENV}}.zone')"
+        names="$(nix eval --impure --json --expr 'let i = import ./inventory.nix; in builtins.concatMap (s: s.dns or [ ]) (builtins.attrValues i.services)')"
+        begin="# BEGIN nix-workloads dev (managed)"
+        end="# END nix-workloads dev (managed)"
+        tmp="$(mktemp)"
+        sed "/$begin/,/$end/d" /etc/hosts > "$tmp"
+        {
+          cat "$tmp"
+          echo "$begin"
+          echo "$names" | jq -r --arg ip "$vmip" --arg z "$zone" '.[] | "\($ip) \(.).\($z)"'
+          echo "$end"
+        } | sudo tee /etc/hosts >/dev/null
+        rm -f "$tmp"
+        sudo dscacheutil -flushcache
+        sudo killall -HUP mDNSResponder 2>/dev/null || true
+        echo "mapped $(echo "$names" | jq 'length') dev names -> $vmip in /etc/hosts"
+
+  dev-dns-down:
+    desc: "Remove the managed dev /etc/hosts block."
+    cmds:
+      - |
+        if [ "$(uname -s)" != "Darwin" ]; then
+          echo "warning: dev-access targets are macOS-only; skipping" >&2
+          exit 0
+        fi
+        sudo -v
+        begin="# BEGIN nix-workloads dev (managed)"
+        end="# END nix-workloads dev (managed)"
+        tmp="$(mktemp)"
+        sed "/$begin/,/$end/d" /etc/hosts > "$tmp"
+        sudo tee /etc/hosts < "$tmp" >/dev/null
+        rm -f "$tmp"
+        sudo dscacheutil -flushcache
+        sudo killall -HUP mDNSResponder 2>/dev/null || true
+        echo "removed the dev /etc/hosts block"
+
+  dev-access-up:
+    desc: "DNS so the Mac can browse *.dev.int.esselius.dev like the homelab (no route)."
+    deps: [dev-dns-up]
+
+  dev-access-down:
+    desc: "Tear down the dev DNS mapping."
+    deps: [dev-dns-down]
+
+  dev-access-status:
+    desc: "Show the dev resolver entry and a sample lookup."
+    cmds:
+      - |
+        if [ "$(uname -s)" != "Darwin" ]; then
+          echo "warning: dev-access targets are macOS-only; skipping" >&2
+          exit 0
+        fi
+        echo "--- /etc/hosts dev block"
+        sed -n '/# BEGIN nix-workloads dev (managed)/,/# END nix-workloads dev (managed)/p' /etc/hosts 2>/dev/null || echo "(none)"
+        echo "--- system lookup (uses /etc/hosts)"
+        dscacheutil -q host -a name "home-assistant.{{.DEV_ZONE}}" 2>/dev/null || true
+        echo "--- ingress on the VM"
+        vmip="$(awk '/# BEGIN nix-workloads dev \(managed\)/{getline; print $1; exit}' /etc/hosts 2>/dev/null)"
+        if [ -n "$vmip" ]; then
+          nc -z -G 3 "$vmip" 443 && echo "$vmip:443 reachable" || echo "$vmip:443 not reachable"
+        else
+          echo "(no dev block - run task dev-access-up)"
         fi

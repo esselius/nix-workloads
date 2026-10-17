@@ -29,6 +29,10 @@ in
   };
 
   config = {
+    # Only the homelab ships metrics/logs to the monitoring workload; a dev
+    # env is deliberately isolated from external services.
+    local.monitoring.enable = lib.mkDefault (config.local.env == "homelab");
+
     services.alloy.enable = cfg.enable;
 
     # The alloy module reads /etc/alloy/config.alloy (a store path here, so a
