@@ -1,0 +1,532 @@
+{
+  "uid": "density",
+  "title": "Capacity / Density",
+  "description": "Host and per-instance memory, KSM, zram, PSI and btrfs capacity. Use this while testing density changes.",
+  "tags": ["capacity", "density", "incus", "memory", "storage"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(incus_memory_MemTotal_bytes, name)",
+        "definition": "label_values(incus_memory_MemTotal_bytes, name)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "options": [],
+        "regex": ""
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Host memory used",
+      "description": "MemTotal minus MemAvailable. Includes page cache.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 80 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "(1 - sum(node_memory_MemAvailable_bytes{node_type=\"host\"}) / sum(node_memory_MemTotal_bytes{node_type=\"host\"})) * 100", "instant": true }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Host available",
+      "description": "MemAvailable: reclaimable cache included, so this is the useful headroom.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_memory_MemAvailable_bytes{node_type=\"host\"})", "instant": true }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Host anonymous",
+      "description": "Anonymous pages. This is the memory KSM can deduplicate; page cache is excluded.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_memory_AnonPages_bytes{node_type=\"host\"})", "instant": true }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Host file cache",
+      "description": "Reclaimable page cache. Shared volumes and consolidating guests reduce duplication here.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_memory_Cached_bytes{node_type=\"host\"})", "instant": true }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Swap used",
+      "description": "zram is the only swap device.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_memory_SwapTotal_bytes{node_type=\"host\"} - node_memory_SwapFree_bytes{node_type=\"host\"})", "instant": true }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "zram saved",
+      "description": "Uncompressed bytes minus compressed bytes currently stored in zram. Effective RAM savings are smaller than this, but this shows the compression gain.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_zram_orig_data_bytes) - sum(node_zram_compr_data_bytes) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "zram ratio",
+      "description": "Original data divided by compressed data. Higher is better; watch PSI when raising swappiness.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "min": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_zram_orig_data_bytes) / clamp_min(sum(node_zram_compr_data_bytes), 1) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "KSM saved (gross)",
+      "description": "pages_sharing * 4 KiB. KSM only merges anonymous pages and only when the daemon is running.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_ksmd_pages_sharing) * 4096 or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "KSM net profit",
+      "description": "Kernel general_profit: savings minus rmap metadata. Negative means KSM is costing memory.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_ksmd_general_profit_bytes) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "KSM daemon",
+      "description": "0 = stopped, 1 = running. Enabling hardware.ksm alone is not enough for containers: services also need MemoryKSM=yes (or madvise).",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "max(node_ksmd_run) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Container anonymous",
+      "description": "Sum of active + inactive anonymous bytes across all instances.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(incus_memory_Active_anon_bytes{type=\"container\"} + incus_memory_Inactive_anon_bytes{type=\"container\"}) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Container file cache",
+      "description": "Sum of active + inactive file bytes across all instances. Shared inodes reduce this.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(incus_memory_Active_file_bytes{type=\"container\"} + incus_memory_Inactive_file_bytes{type=\"container\"}) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "OOM kills (1h)",
+      "description": "Instance cgroup OOM kills in the last hour.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(incus_memory_OOM_kills_total{type=\"container\"}[1h])) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "PSI memory full",
+      "description": "Rate of memory stalls where all tasks are stalled. Requires psi=1 on the host kernel command line.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_pressure_memory_stalled_seconds_total{node_type=\"host\"}[5m]) * 100 or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "stat",
+      "title": "Small-instance anon",
+      "description": "Anonymous memory across all instances except home-assistant and monitoring. These are the instances where replacing per-guest Alloy shows up first.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(incus_memory_Active_anon_bytes{type=\"container\",name!~\"home-assistant|monitoring\"} + incus_memory_Inactive_anon_bytes{type=\"container\",name!~\"home-assistant|monitoring\"}) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 33,
+      "type": "stat",
+      "title": "Running instances",
+      "description": "Count of containers reporting Incus memory metrics.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "count(incus_memory_MemTotal_bytes{type=\"container\"}) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Host memory composition",
+      "description": "Stacked anonymous, page cache, kernel and shmem.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "min": 0, "custom": { "stacking": { "mode": "normal", "group": "A" }, "fillOpacity": 35, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "node_memory_AnonPages_bytes{node_type=\"host\"}", "legendFormat": "anon" },
+        { "refId": "B", "expr": "node_memory_Cached_bytes{node_type=\"host\"}", "legendFormat": "file cache" },
+        { "refId": "C", "expr": "node_memory_KReclaimable_bytes{node_type=\"host\"}", "legendFormat": "kernel reclaimable" },
+        { "refId": "D", "expr": "node_memory_SUnreclaim_bytes{node_type=\"host\"}", "legendFormat": "kernel unreclaimable" },
+        { "refId": "E", "expr": "node_memory_Shmem_bytes{node_type=\"host\"}", "legendFormat": "shmem" }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Host memory used vs available",
+      "description": "Used includes page cache, so watch the gap to MemAvailable for real headroom.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "node_memory_MemTotal_bytes{node_type=\"host\"} - node_memory_MemAvailable_bytes{node_type=\"host\"}", "legendFormat": "used" },
+        { "refId": "B", "expr": "node_memory_MemAvailable_bytes{node_type=\"host\"}", "legendFormat": "available" },
+        { "refId": "C", "expr": "node_memory_MemTotal_bytes{node_type=\"host\"}", "legendFormat": "total" }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Swap and zram",
+      "description": "zram is compressed swap. mem_used is the RAM actually held by compressed pages.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 15, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "node_zram_orig_data_bytes", "legendFormat": "zram original" },
+        { "refId": "B", "expr": "node_zram_compr_data_bytes", "legendFormat": "zram compressed" },
+        { "refId": "C", "expr": "node_zram_mem_used_bytes", "legendFormat": "zram in RAM" },
+        { "refId": "D", "expr": "node_memory_SwapTotal_bytes{node_type=\"host\"} - node_memory_SwapFree_bytes{node_type=\"host\"}", "legendFormat": "swap used" }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "KSM pages",
+      "description": "pages_sharing is the number of duplicate pages eliminated. Run must be 1 and pages must be marked mergeable.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "node_ksmd_pages_shared", "legendFormat": "shared" },
+        { "refId": "B", "expr": "node_ksmd_pages_sharing", "legendFormat": "sharing (saved pages)" },
+        { "refId": "C", "expr": "node_ksmd_pages_unshared", "legendFormat": "unshared" },
+        { "refId": "D", "expr": "node_ksmd_pages_volatile", "legendFormat": "volatile" }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "KSM saved vs net profit",
+      "description": "Gross saved = pages_sharing * 4 KiB. Net profit subtracts rmap metadata; keep only if net is positive.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "node_ksmd_pages_sharing * 4096", "legendFormat": "gross saved" },
+        { "refId": "B", "expr": "node_ksmd_general_profit_bytes", "legendFormat": "net profit" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "KSM COW and scans",
+      "description": "COW happens when a process writes a merged page. Rising COW means KSM is adding write cost.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_vmstat_cow_ksm{node_type=\"host\"}[5m])", "legendFormat": "COW / s" },
+        { "refId": "B", "expr": "rate(node_ksmd_full_scans_total[5m])", "legendFormat": "full scans / s" },
+        { "refId": "C", "expr": "node_ksmd_pages_to_scan", "legendFormat": "pages to scan" },
+        { "refId": "D", "expr": "node_ksmd_sleep_seconds", "legendFormat": "sleep seconds" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Per-instance anonymous memory",
+      "description": "Active + inactive anonymous memory. This is what KSM can target.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 36 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "stacking": { "mode": "normal", "group": "A" }, "fillOpacity": 35, "lineWidth": 1 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "incus_memory_Active_anon_bytes{type=\"container\",name=~\"$instance\"} + incus_memory_Inactive_anon_bytes{type=\"container\",name=~\"$instance\"}", "legendFormat": "{{name}}" }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Per-instance file cache",
+      "description": "Active + inactive file cache. Shared inodes / consolidation reduce this.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 36 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "stacking": { "mode": "normal", "group": "A" }, "fillOpacity": 35, "lineWidth": 1 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "incus_memory_Active_file_bytes{type=\"container\",name=~\"$instance\"} + incus_memory_Inactive_file_bytes{type=\"container\",name=~\"$instance\"}", "legendFormat": "{{name}}" }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Per-instance memory used",
+      "description": "MemTotal - MemAvailable per instance. Includes page cache, so compare with the anonymous panel.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "incus_memory_MemTotal_bytes{type=\"container\",name=~\"$instance\"} - incus_memory_MemAvailable_bytes{type=\"container\",name=~\"$instance\"}", "legendFormat": "{{name}}" }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "CPU: host and per-instance",
+      "description": "Host CPU is percent of all cores. Instance CPU is percent of one core, so 400 = all four cores.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\",node_type=\"host\"}[5m])) * 100)", "legendFormat": "host all cores" },
+        { "refId": "B", "expr": "sum by (name) (rate(incus_cpu_seconds_total{type=\"container\",name=~\"$instance\"}[5m])) * 100", "legendFormat": "{{name}} one core" }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "PSI pressure",
+      "description": "Requires psi=1. Memory full > 0 is a strong signal to stop adding workloads or increase zram/KSM.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 53 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_pressure_memory_waiting_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "memory some" },
+        { "refId": "B", "expr": "rate(node_pressure_memory_stalled_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "memory full" },
+        { "refId": "C", "expr": "rate(node_pressure_io_stalled_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "io full" },
+        { "refId": "D", "expr": "rate(node_pressure_cpu_waiting_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "cpu some" }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "btrfs used by block group",
+      "description": "Dedup or compression shows up as a reduction here. Metadata is DUP on this pool.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 53 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "node_btrfs_used_bytes{node_type=\"host\"}", "legendFormat": "{{block_group_type}}" }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "Pool used",
+      "description": "/persist btrfs filesystem usage.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 61 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 80 }, { "color": "red", "value": 90 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "(1 - sum(node_filesystem_avail_bytes{mountpoint=\"/persist\"}) / sum(node_filesystem_size_bytes{mountpoint=\"/persist\"})) * 100", "instant": true }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "stat",
+      "title": "Pool free",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 61 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_filesystem_avail_bytes{mountpoint=\"/persist\"})", "instant": true }
+      ]
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "btrfs data used",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 61 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_btrfs_used_bytes{node_type=\"host\",block_group_type=\"data\"})", "instant": true }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "btrfs metadata used",
+      "description": "Metadata is DUP (2x) on this pool.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 61 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "sum(node_btrfs_used_bytes{node_type=\"host\",block_group_type=\"metadata\"})", "instant": true }
+      ]
+    },
+    {
+      "id": 31,
+      "type": "text",
+      "title": "How to use this dashboard",
+      "datasource": null,
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 66 },
+      "options": {
+        "mode": "markdown",
+        "content": "## Reading the signals\n\n- The **baseline** annotation marks the current 11-container state before any density experiment: per-guest Alloy present, KSM off (`node_ksmd_run=0`), zram at 50%, no limit changes.\n- **Host anonymous** is the main density constraint here; **file cache** is reclaimable and is reduced by shared inodes / consolidation.\n- **KSM saved** only becomes non-zero when `hardware.ksm.enable` is on **and** the workload's pages are marked mergeable (`MemoryKSM=yes` in the guest, or `MADV_MERGEABLE`). `KSM net profit` below zero means KSM is costing memory.\n- **zram saved** is compression gain, not guaranteed free RAM; watch **PSI memory full** and swap page rates for thrash.\n- **btrfs data used** drops when compression/dedup works. Dedup also increases `node_btrfs_used_bytes{block_group_type=\"metadata\"}` until old extents are freed.\n- **PSI panels are empty by design in the baseline.** PSI requires `psi=1` on the host kernel command line; enable it as a separate experiment so its effect is attributable.\n\n## Experiment log\n\n| Change | Watch |\n|---|---|\n| Remove/replace per-guest Alloy | Container anonymous + file cache, host available |\n| Consolidate guests | Per-instance anon/file, host file cache |\n| Enable KSM + `MemoryKSM=yes` | KSM saved/profit, COW/s, CPU, PSI |\n| Raise zram `memoryPercent` / swappiness | zram ratio/saved, swap used, PSI, CPU |\n| Run `duperemove`/`bees` | btrfs data used, metadata used, pool free, IO latency |\n| Share infra or offload monitoring/cache/backup | Container anon total, host anon, host available |\n| Enable `psi=1` on the host | PSI pressure panels |\n\nAdd a Grafana annotation before and after each change so the 24h window makes before/after comparison easy."
+      }
+    }
+  ]
+}

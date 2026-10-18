@@ -1,0 +1,387 @@
+{
+  "uid": "pressure",
+  "title": "Pressure / Cache Risk",
+  "description": "Negative effects of memory tuning: cache refaults, reclaim churn, OOM, swap activity, PSI latency and NVMe writes.",
+  "tags": ["capacity", "density", "memory", "risk", "cache"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "OOM kills (15m)",
+      "description": "Cgroup OOM kills in the last 15 minutes. Any non-zero value means a limit is too low or swap is needed.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "sum(increase(node_cgroup_memory_oom_kill_total[15m])) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Memory max events /s",
+      "description": "Rate of cgroup memory.max hits. Sustained values mean cache is being capped and reclaimed.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "sum(rate(node_cgroup_memory_events_max_total[5m])) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Swap max events /s",
+      "description": "Rate of cgroup swap limit hits. Non-zero means the swap cap is being reached.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "sum(rate(node_cgroup_memory_swap_events_max_total[5m])) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "PSI memory full",
+      "description": "Percent of time all tasks are stalled on memory.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "decimals": 2, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "rate(node_pressure_memory_stalled_seconds_total{node_type=\"host\"}[5m]) * 100 or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "PSI io full",
+      "description": "Percent of time all tasks are stalled on I/O. Rises with NVMe contention or disk swap.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "decimals": 2, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "rate(node_pressure_io_stalled_seconds_total{node_type=\"host\"}[5m]) * 100 or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Host iowait",
+      "description": "CPU time waiting on block I/O.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "rate(node_cpu_seconds_total{node_type=\"host\",mode=\"iowait\"}[5m]) * 100 or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "NVMe write rate",
+      "description": "Host-normalized device writes. zram-only swap should not drive this; a rise points to disk swap or writeback.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "min": 0, "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "rate(node_disk_written_bytes_total{node_type=\"host\",device=\"nvme0n1\"}[5m]) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "NVMe avg write latency",
+      "description": "Average device write latency from diskstats.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "decimals": 4, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.01 }, { "color": "red", "value": 0.05 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "rate(node_disk_write_time_seconds_total{node_type=\"host\",device=\"nvme0n1\"}[5m]) / clamp_min(rate(node_disk_writes_completed_total{node_type=\"host\",device=\"nvme0n1\"}[5m]), 1) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Swap activity",
+      "description": "Host page swap-in+out. zram is RAM-backed, but heavy rates mean memory pressure and CPU cost.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "min": 0, "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_vmstat_pswpout{node_type=\"host\"}[5m]) * 4096 or vector(0)", "legendFormat": "swap out" },
+        { "refId": "B", "expr": "rate(node_vmstat_pswpin{node_type=\"host\"}[5m]) * 4096 or vector(0)", "legendFormat": "swap in" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Refaults /s",
+      "description": "Total file pages re-read after eviction. Sustained > 0 means the cache is smaller than the reused working set.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "sum(rate(node_cgroup_memory_workingset_refault_file_total[5m])) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Reclaim /s",
+      "description": "Pages reclaimed per second. Sustained reclaim means pressure inside one or more cgroups.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "sum(rate(node_cgroup_memory_pgsteal_total[5m])) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Major faults /s",
+      "description": "Page faults that required disk I/O, host-wide.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "rate(node_vmstat_pgmajfault{node_type=\"host\"}[5m]) or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Cache working set (active_file) by instance",
+      "description": "Hot page cache. This is the closest proxy for the file working set an instance actually reuses.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "stacking": { "mode": "normal", "group": "A" }, "fillOpacity": 35, "lineWidth": 1 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "expr": "node_cgroup_memory_active_file_bytes", "legendFormat": "{{name}}" } ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "File cache total by instance",
+      "description": "Total page cache. Compare with active_file: a large inactive_file with zero refaults is cold cache that can be reclaimed.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "stacking": { "mode": "normal", "group": "A" }, "fillOpacity": 25, "lineWidth": 1 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "expr": "node_cgroup_memory_file_bytes", "legendFormat": "{{name}}" } ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Refault vs activation by instance",
+      "description": "refault = reused content was evicted and had to be read again; activate = that refaulted page was reused. activate > 0 confirms true working-set misses.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_cgroup_memory_workingset_refault_file_total[5m])", "legendFormat": "{{name}} refault/s" },
+        { "refId": "B", "expr": "rate(node_cgroup_memory_workingset_activate_file_total[5m])", "legendFormat": "{{name}} activate/s" }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Reclaim pressure by instance",
+      "description": "Pages scanned and reclaimed per second. High steal means the cgroup is repeatedly losing cache.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_cgroup_memory_pgsteal_total[5m])", "legendFormat": "{{name}} steal/s" },
+        { "refId": "B", "expr": "rate(node_cgroup_memory_pgscan_total[5m])", "legendFormat": "{{name}} scan/s" }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Memory current vs limit by instance",
+      "description": "Used name=current; limit name=max. A flat current at max means the cache is clamped to the limit.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "node_cgroup_memory_current_bytes", "legendFormat": "{{name}} current" },
+        { "refId": "B", "expr": "node_cgroup_memory_max_bytes", "legendFormat": "{{name}} limit" }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "PSI pressure over time",
+      "description": "some = at least one task stalled; full = all tasks stalled. Sustained full memory/io stalls are the clearest latency regression signal.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_pressure_memory_waiting_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "memory some" },
+        { "refId": "B", "expr": "rate(node_pressure_memory_stalled_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "memory full" },
+        { "refId": "C", "expr": "rate(node_pressure_io_stalled_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "io full" },
+        { "refId": "D", "expr": "rate(node_pressure_cpu_waiting_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "cpu some" }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Swap and zram",
+      "description": "zram original vs compressed vs RAM used; host swap used. Falling compression ratio or rising mem_used means less effective swap.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "node_zram_orig_data_bytes", "legendFormat": "zram original" },
+        { "refId": "B", "expr": "node_zram_compr_data_bytes", "legendFormat": "zram compressed" },
+        { "refId": "C", "expr": "node_zram_mem_used_bytes", "legendFormat": "zram in RAM" },
+        { "refId": "D", "expr": "node_memory_SwapTotal_bytes{node_type=\"host\"} - node_memory_SwapFree_bytes{node_type=\"host\"}", "legendFormat": "swap used" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "NVMe write throughput and utilization",
+      "description": "Device writes and busy time. Flash wear scales with written bytes; the current zram swap is RAM-only, so swap should not move this line.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_disk_written_bytes_total{node_type=\"host\",device=\"nvme0n1\"}[5m])", "legendFormat": "write" },
+        { "refId": "B", "expr": "rate(node_disk_read_bytes_total{node_type=\"host\",device=\"nvme0n1\"}[5m])", "legendFormat": "read" }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "NVMe wear used",
+      "description": "SMART vendor-estimated percentage of device life used. This rises with total host writes, not just swap.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 48 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 90 } ] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "node_nvme_percentage_used or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 23,
+      "type": "stat",
+      "title": "NVMe spare",
+      "description": "SMART available spare blocks. The drive warns below its spare threshold.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 48 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 10 }, { "color": "green", "value": 20 } ] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "node_nvme_available_spare_percent or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 24,
+      "type": "stat",
+      "title": "NVMe written",
+      "description": "Lifetime bytes written according to SMART data units (512,000 bytes each).",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 48 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "node_nvme_data_written_bytes_total or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 25,
+      "type": "stat",
+      "title": "NVMe media errors",
+      "description": "Unrecovered media/data-integrity errors. Any non-zero value is serious.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 48 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "node_nvme_media_errors_total or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "NVMe temperature",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 48 },
+      "fieldConfig": { "defaults": { "unit": "celsius", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 60 }, { "color": "red", "value": 70 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "node_nvme_temperature_celsius or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "NVMe unsafe shutdowns",
+      "description": "Lifetime unsafe shutdown count; watch this after power-loss or forced reboots.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 48 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
+      "targets": [ { "refId": "A", "expr": "node_nvme_unsafe_shutdowns_total or vector(0)", "instant": true } ]
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "NVMe wear and spare",
+      "description": "Wear is monotonic; spare should stay well above its threshold. A sudden wear jump means a write burst.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "node_nvme_percentage_used", "legendFormat": "wear used" },
+        { "refId": "B", "expr": "node_nvme_available_spare_percent", "legendFormat": "available spare" },
+        { "refId": "C", "expr": "node_nvme_available_spare_threshold_percent", "legendFormat": "spare threshold" }
+      ]
+    },
+    {
+      "id": 29,
+      "type": "timeseries",
+      "title": "NVMe written bytes rate",
+      "description": "SMART lifetime write counter vs kernel diskstats. SMART has hourly resolution here; diskstats shows short bursts.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_nvme_data_written_bytes_total[6h])", "legendFormat": "SMART write" },
+        { "refId": "B", "expr": "rate(node_disk_written_bytes_total{node_type=\"host\",device=\"nvme0n1\"}[5m])", "legendFormat": "kernel write" },
+        { "refId": "C", "expr": "rate(node_nvme_data_read_bytes_total[6h])", "legendFormat": "SMART read" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "text",
+      "title": "How to read this dashboard",
+      "datasource": null,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 60 },
+      "options": {
+        "mode": "markdown",
+        "content": "## Negative-effect signals\n\n| Signal | Meaning | Action |\n|---|---|---|\n| `refault/s` and `activate/s` sustained > 0 | Reused file pages are being evicted and re-read: the cache is smaller than the working set | raise that instance's `limits.memory` |\n| `steal/s` sustained | Reclaim is repeatedly discarding cache | raise limit or accept lower cache hit rate |\n| `major faults/s` rising | Disk reads on the fault path | raise cache limit or move data |\n| `memory max events/s` > 0 | Cgroup is pinned at its hard limit | check whether `current` is mostly file cache (reclaimable) or `anon` (real need) |\n| `swap max events/s` / `swap fail/s` > 0 | Swap cap too small | raise `limits.memory.swap` or the hard limit |\n| `OOM kills` > 0 | Hard limit too small for peak anon + swap | raise limit/swap |\n| PSI `memory full` / `io full` sustained > 0 | Latency pressure | raise limits, reduce workloads, or add RAM |\n| NVMe write rate tracking swap activity | Disk swap or zram writeback is wearing the SSD | move back to zram-only or reduce pressure |\n\n`active_file` is the best single-number estimate of the file working set an instance reuses; `inactive_file` with zero refaults is cold and can be reclaimed. NVMe wear is now exposed from SMART (`percentage_used`, `available_spare`, lifetime data units written); current zram swap is RAM-only, so swap should not increase the SMART write counter. SMART counters update hourly, while kernel diskstats shows short bursts."
+      }
+    }
+  ]
+}
