@@ -148,7 +148,7 @@ let
     };
     monitoring = {
       limit = "1536MiB";
-      swap = "256MiB";
+      swap = "512MiB";
       oomPriority = "100";
     };
     kanidm = {

@@ -8,11 +8,11 @@ at least 24 h (use 1–2 h only for quick signal checks).
 
 | ID | State | Notes |
 |---|---|---|
-| E1/E2 | **running** | cache rebalance applied; observation window started 2026-10-18 15:xx UTC; do not change anything else until it settles |
-| E3 | reverted | swap-cap change overlapped E1/E2; re-run after the window |
-| E4 | reverted | zram/swappiness change overlapped E1/E2; re-run after the window |
-| E5 | pending | dev-only; run once E1/E2 has a result |
-| E7 | pending | KSM; host + guest service config, deploy after E1/E2 |
+| E1/E2 | **running** | cache rebalance applied; observation window started 2026-10-18 ~15:35 UTC; do not change anything else until it settles |
+| E3 | **running** | monitoring `limits.memory.swap` 256→512 MiB (applied 16:07 UTC); swap events/high/max/fail still 0, swap use 167 MiB, zram RAM 196 MiB |
+| E4 | reverted | zram/swappiness change reverted; re-run after E1/E2 |
+| E5 | partial | dev-only: 256 MiB hard-limit `oom-test` container stopped on a 512 MiB `/dev/shm` allocation; cgroup OOM path validated, host-level priority ordering not forced |
+| E7 | pending | KSM; host + guest service config, run after E1/E2 |
 | E8 | complete | duperemove dedup on container rootfs `/nix/store`: btrfs used 23.81 GiB → 19.15 GiB (~4.66 GiB); not reversible |
 | E6, E9 | structural | deferred |
 
