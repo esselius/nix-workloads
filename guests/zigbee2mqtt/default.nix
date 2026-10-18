@@ -11,14 +11,6 @@
     "${modulesPath}/virtualisation/lxc-container.nix"
   ];
 
-  local.ksm.services = [
-    "alloy"
-    "zigbee2mqtt"
-    "nginx"
-    "oauth2-proxy"
-    "mqtt-exporter"
-  ];
-
   networking = {
     hostName = "zigbee2mqtt";
     # The incus image configures eth0 with systemd-networkd, not dhcpcd.

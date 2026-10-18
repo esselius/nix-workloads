@@ -12,7 +12,7 @@ at least 24 h (use 1–2 h only for quick signal checks).
 | E3 | **running** | monitoring `limits.memory.swap` 256→512 MiB (applied 16:07 UTC); swap events/high/max/fail still 0, swap use 167 MiB, zram RAM 196 MiB |
 | E4 | reverted | zram/swappiness change reverted; re-run after E1/E2 |
 | E5 | partial | dev-only: 256 MiB hard-limit `oom-test` container stopped on a 512 MiB `/dev/shm` allocation; cgroup OOM path validated, host-level priority ordering not forced |
-| E7 | **rejected** | pilot ran 17:27–18:40 UTC on monitoring/HA/z2m/mosquitto with `use_zero_pages=1` and scan-time advisor. Best: sharing ~2041 pages (~8 MiB) + zero pages ~8067 (~32 MiB) ≈ **40 MiB gross / ~35 MiB net**, while `ksmd` burned ~6.7 % of one core during the window and `cow_ksm` rose to ~15 copies/s. Not worth fleet rollout; KSM stopped (`run=2`). Pending code revert |
+| E7 | **rejected, reverted** | pilot ran 17:27–18:40 UTC on monitoring/HA/z2m/mosquitto with `use_zero_pages=1` and scan-time advisor. Best: sharing ~2041 pages (~8 MiB) + zero pages ~8067 (~32 MiB) ≈ **40 MiB gross / ~35 MiB net**, while `ksmd` burned ~6.7 % of one core and `cow_ksm` rose to ~15 copies/s. Not worth fleet rollout; KSM stopped (`run=2`) and the host/guest KSM code removed |
 | E8 | complete | duperemove dedup on container rootfs `/nix/store`: btrfs used 23.81 GiB → 19.15 GiB (~4.66 GiB); not reversible |
 | E6, E9 | structural | deferred |
 
@@ -194,14 +194,53 @@ and re-read, so the cache is smaller than the working set.
   without materially shrinking the pool.
 - **Rollback:** remove the timer/service.
 
-### E9 — Shared Nix store (longer-term)
+### E9 — Shared Nix store (design + reliability)
 
 - **Hypothesis:** a shared read-only store (with per-guest overlay) shares page
   cache and removes duplicate file cache across guests.
-- **Change:** design only; start with a boot/GC/activation prototype in `dev`.
 - **Watch:** `node_cgroup_memory_file_bytes`, shared inode page cache, refaults.
-- **Guardrail:** never share a writable store; GC and `/nix/var/nix` must stay
-  per guest.
+
+**How it could work**
+
+1. One authority owns the shared store (the host's persistent `/nix/store` on
+   the `@nix` subvolume). Guest closures are pushed there from Attic by the
+   host; the host's own store is the single writer.
+2. Each guest gets an overlay at `/nix/store`:
+   `lowerdir=<shared store>[:<rootfs store>]`, `upperdir=<guest-local>`,
+   `workdir=<guest-local>`. Reads of shared paths hit the same inodes, so the
+   host page cache is shared; writes go to the guest's upper layer.
+3. The overlay must exist before systemd reads its units. In an Incus container
+   that means a boot-time mount that also keeps the rootfs `/nix/store` visible,
+   i.e. a lower layer for the running generation.
+4. `/nix/var/nix` (DB, profiles, GC roots) stays per guest. Writable-store
+   sharing is rejected: concurrent `db.sqlite`, GC and registration are not
+   safe between independent systems.
+
+**Reliability assessment**
+
+- Overlay mechanics work: tested in a `dev` guest (unprivileged), including
+  read, hardlink across the lower/upper boundary, symlink, rename and delete.
+- Unresolved and load-bearing:
+  - **Boot ordering**: the running generation's store paths must be in a lower
+    layer before systemd starts, otherwise the container cannot exec its init.
+    Needs a bind-mount + overlay setup in the LXC config or a very early mount,
+    which Incus does not expose as a normal device.
+  - **Nix DB/references**: a guest's `db.sqlite` does not know the shared
+    paths, so `nix-store -q --references`, `--verify`, activation and GC
+    behave differently. Seeding/syncing a read-only DB is not a supported
+    pattern.
+  - **GC**: guest auto-GC on a shared lower either whiteouts shared paths in
+    its upper or fails; the shared store needs central GC roots and the guests
+    must not GC it.
+  - **Deploy flow**: every new closure must land in the shared store before the
+    guest switches, so `task deploy` gains a host-side `nix copy` step and the
+    build/cache flow gets more moving parts.
+  - The gain is page cache/disk, not the anon pressure that is the real
+    constraint here.
+- **Verdict:** not reliable enough to trust for the critical smart-home
+  services. The safe variants are consolidation (one system, shared inodes,
+  shared page cache, normal Nix semantics) and E8 dedup (disk only). Prototype
+  in `dev` at most; do not put it under the homelab.
 - **Rollback:** prototype only until proven.
 
 ## Protocol
