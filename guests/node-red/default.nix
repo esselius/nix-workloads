@@ -78,6 +78,15 @@ in
     };
   };
 
+  # Back up the Node-RED state that lives under the volume mounted at
+  # /var/lib/node-red: flows.json, credentials (encrypted with the sops
+  # credential secret), context and the palette (node_modules) the flows need to
+  # load. The npm download cache is regenerable, so leave it out.
+  local.backup = {
+    paths = [ "/var/lib/node-red" ];
+    exclude = [ "/var/lib/node-red/.npm/_cacache" ];
+  };
+
   # Node-RED's OIDC strategy lives in passport-openidconnect; expose it via
   # NODE_PATH and point the settings at the sops files.
   systemd.services.node-red.environment = {

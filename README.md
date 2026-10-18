@@ -487,8 +487,9 @@ htpasswd all come from `secrets/backup.yaml`. Home Assistant additionally
 
 Backed up: `home-assistant` (`/var/lib/hass` plus the pg_dump), `zigbee2mqtt`,
 `monitoring` (Grafana state only - the VictoriaMetrics/Loki history is large and
-regenerable), `kanidm`, `step-ca`. A guest with no `local.backup.paths` is simply
-not backed up.
+regenerable), `kanidm`, `step-ca`, `node-red` (`/var/lib/node-red` - flows,
+credentials, context and the palette; the npm download cache is excluded). A
+guest with no `local.backup.paths` is simply not backed up.
 
 ```fish
 # inspect / restore as any backed-up guest (the module adds a `restic-system` wrapper)
@@ -512,8 +513,9 @@ board loss loses the backups too. Add an offsite rclone/B2 copy of the
 backed-up guest it runs `restic check --read-data-subset=5%`, restores the
 latest snapshot of the env's repo to a scratch dir, and asserts the expected
 state came back (HA's `.storage` plus a dump that `pg_restore --list` accepts,
-Kanidm/step-ca state, Grafana's `grafana.db`, and Zigbee2MQTT's DB/config - the
-last skipped when the coordinator is absent, e.g. in `dev`):
+Kanidm/step-ca state, Grafana's `grafana.db`, Node-RED's `flows.json`, and
+Zigbee2MQTT's DB/config - the last skipped when the coordinator is absent, e.g.
+in `dev`):
 
 ```fish
 task restore-test                    # homelab (validates the production backups)
@@ -541,6 +543,7 @@ subnet).
 ```fish
 ENV=dev task dr-restore -- kanidm
 ENV=dev task dr-restore -- home-assistant
+ENV=dev task dr-restore -- node-red
 ENV=dev task dr-restore-all   # every supported guest
 ```
 

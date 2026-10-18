@@ -259,7 +259,7 @@ tasks:
         env="${ENV:-homelab}"
         remote="$(nix eval --raw --impure --expr "let i = import ./inventory.nix; e = i.envs.${env}; in (builtins.getAttr e.defaultHost e.hosts).remote")"
         names="{{.CLI_ARGS}}"
-        [ -n "$names" ] || names="home-assistant zigbee2mqtt kanidm step-ca monitoring"
+        [ -n "$names" ] || names="home-assistant zigbee2mqtt kanidm step-ca monitoring node-red"
         fail=0
         for name in $names; do
           echo "==> restore-test $name ($env)"
@@ -286,6 +286,7 @@ tasks:
           kanidm)     [ -n "$(ls -A "$scratch/var/lib/kanidm" 2>/dev/null)" ] || { echo "  empty /var/lib/kanidm"; ok=0; } ;;
           step-ca)    [ -n "$(ls -A "$scratch/var/lib/step-ca" 2>/dev/null)" ] || { echo "  empty /var/lib/step-ca"; ok=0; } ;;
           monitoring) [ -f "$scratch/var/lib/monitoring/grafana/data/grafana.db" ] || { echo "  missing grafana.db"; ok=0; } ;;
+          node-red)   [ -f "$scratch/var/lib/node-red/flows.json" ] || { echo "  missing flows.json"; ok=0; } ;;
           zigbee2mqtt)
             if [ -z "$(ls -A /var/lib/zigbee2mqtt 2>/dev/null)" ]; then
               echo "  no zigbee2mqtt state (unit gated off without the coordinator) - skipping"
@@ -319,7 +320,7 @@ tasks:
         name="{{index .CLI_ARGS_LIST 0}}"
         [ -n "$name" ] || { echo "Usage: ENV=dev task dr-restore -- <name>" >&2; exit 1; }
         [ "${ENV:-homelab}" = dev ] || { echo "dr-restore targets the dev env: ENV=dev task dr-restore -- <name>" >&2; exit 1; }
-        for b in restic sops jq colima; do
+        for b in restic sops jq colima nix; do
           command -v "$b" >/dev/null || { echo "$b not found (run in the devshell)" >&2; exit 1; }
         done
 
@@ -331,7 +332,8 @@ tasks:
         export RESTIC_REST_USERNAME=restic
         export RESTIC_REST_PASSWORD="$(sops -d --extract '["restic_rest_password"]' secrets/backup.yaml)"
 
-        prod="rest:http://10.43.0.18:8000/$name"
+        prodip="$(nix eval --raw --impure --expr "let i = import ./inventory.nix; in i.ipFor \"homelab\" \"backup\"")"
+        prod="rest:http://$prodip:8000/$name"
         dev="rest:http://$vmip:8000/$name"
 
         echo "==> mirror $name: homelab -> dev ($vmip:8000)"
@@ -348,6 +350,7 @@ tasks:
           kanidm)         svc=kanidm ;;
           step-ca)        svc=step-ca ;;
           monitoring)     svc=grafana ;;
+          node-red)       svc=node-red ;;
           zigbee2mqtt)    svc=zigbee2mqtt ;;
           *) echo "no service mapping for $name"; exit 1 ;;
         esac
@@ -381,6 +384,7 @@ tasks:
               kanidm)         curl -skf -o /dev/null https://127.0.0.1/status && http=1 ;;
               step-ca)        curl -skf -o /dev/null https://127.0.0.1:8443/health && http=1 ;;
               monitoring)     curl -sf -o /dev/null http://127.0.0.1:3000/api/health && http=1 ;;
+              node-red)       curl -sf -o /dev/null http://127.0.0.1:1880/ && http=1 ;;
               *)              http=1 ;;
             esac
             [ "$http" = 1 ] && break
@@ -398,7 +402,7 @@ tasks:
       - |
         set -e
         [ "${ENV:-homelab}" = dev ] || { echo "dr-restore-all targets the dev env: ENV=dev task dr-restore-all" >&2; exit 1; }
-        names="kanidm home-assistant step-ca monitoring zigbee2mqtt"
+        names="kanidm home-assistant step-ca monitoring zigbee2mqtt node-red"
         fail=0
         for n in $names; do
           echo "===== dr-restore $n ====="
