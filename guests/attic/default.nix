@@ -11,6 +11,8 @@
     "${modulesPath}/virtualisation/lxc-container.nix"
   ];
 
+  local.monitoring.mode = "light";
+
   networking = {
     hostName = "attic";
     # The incus image configures eth0 with systemd-networkd, not dhcpcd.

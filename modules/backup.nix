@@ -98,7 +98,7 @@ in
         RESTIC_REPOSITORY = "${cfg.repository}/${hostName}";
         RESTIC_PASSWORD_FILE = config.sops.secrets.restic_password.path;
         RESTIC_CACHE_DIR = "/var/cache/restic-exporter";
-        LISTEN_ADDRESS = "127.0.0.1";
+        LISTEN_ADDRESS = "0.0.0.0";
         LISTEN_PORT = "9753";
         # Inspecting the repo is not free; 6h is plenty for a daily backup.
         REFRESH_INTERVAL = "21600";
@@ -125,5 +125,7 @@ in
         forward_to = [prometheus.relabel.host.receiver]
       }
     '';
+
+    networking.firewall.interfaces.eth0.allowedTCPPorts = [ 9753 ];
   };
 }

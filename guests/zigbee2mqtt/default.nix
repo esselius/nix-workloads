@@ -11,6 +11,8 @@
     "${modulesPath}/virtualisation/lxc-container.nix"
   ];
 
+  local.monitoring.mode = "light";
+
   networking = {
     hostName = "zigbee2mqtt";
     # The incus image configures eth0 with systemd-networkd, not dhcpcd.
@@ -247,6 +249,7 @@
     22
     80
     443
+    9000
   ];
 
   system.stateVersion = "26.05";

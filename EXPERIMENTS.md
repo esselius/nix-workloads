@@ -156,17 +156,85 @@ and re-read, so the cache is smaller than the working set.
 - **Guardrail:** none in dev; never run the hog in the homelab.
 - **Rollback:** stop the hog / destroy the dev guest.
 
-### E6 — Remove per-guest Alloy (largest single win)
+### E6 — Replace or tune per-guest Alloy
 
-- **Hypothesis:** per-guest Alloy costs ~0.8 GiB anon + ~1.5 GiB file cache
-  across the fleet and is duplicated work.
-- **Change:** drop per-guest Alloy; use the host's Incus metrics for
-  CPU/mem/disk/network and add a lightweight journal shipper only where logs
-  are needed.
-- **Watch:** container anon total and file cache fall; host anon falls; refaults
-  do not rise; per-instance anon floors drop (especially the small guests).
-- **Guardrail:** keep critical logs/metrics coverage; document what is lost.
-- **Rollback:** re-enable `services.alloy` via the guest module.
+**Measured baseline** (cgroup `alloy.service`, per guest): RSS 99–219 MiB,
+`anon` 56–94 MiB, `file` 87–259 MiB, `current` 148–357 MiB. Fleet `anon`
+~0.7 GiB and RSS ~1.4 GiB, plus a ~360 MiB shared closure.
+
+**Option A — tune Alloy (pilot on mosquitto, 2026-10-18)**
+
+- `GOMEMLIMIT=64MiB`, `GOGC=50`, `--disable-reporting`, minimal
+  `set_collectors`, node scrape `2m`.
+- Result: `anon` 62 → 51 MiB, but `file`/`current` rose because the container
+  limit was also raised by E1; RSS stayed high. CPU ~0.5 % of one core.
+- Verdict: cheap and harmless, small anon win, not enough on its own.
+
+**Option B prototype — mosquitto, 2026-10-18 20:5x**
+
+- mosquitto: Alloy removed; `prometheus-node-exporter` (with `systemd`) and
+  `systemd-journal-upload` added; broker exporter rebound to `0.0.0.0:9234`;
+  monitoring Alloy scrapes both targets.
+- Measured: Alloy gone (was 122 MiB RSS / 62 MiB anon); node_exporter 24.8 MiB,
+  journal-upload 15.9 MiB, mosquitto-exporter 17.7 MiB; guest `anon` 37 MiB.
+  Rough saving **~80 MiB RSS / ~48 MiB anon** for this guest; extrapolates to
+  roughly **0.9–1.3 GiB RSS** fleet-wide.
+- Verified: `up{host="mosquitto"}` for both node and app jobs;
+  `node_systemd_unit_state{host="mosquitto",state="failed"}` present (failed
+  units retained); broker metrics intact.
+- Logs: `systemd-journal-remote` created
+  `/var/lib/monitoring/journal-remote/remote-10.43.0.11.journal`. **Not yet in
+  Loki** — ingestion from the remote journal files into Loki is the open piece.
+- Note: `systemd-journal-remote` logged a btrfs CoW warning; set `chattr +C` on
+  the journal directory (and add retention) before wider use.
+
+**Rollout — light mode on 9 guests, 2026-10-18 21:1x**
+
+- `local.monitoring.mode = "light"` on attic, backup, coredns, homepage, kanidm,
+  mosquitto, node-red, step-ca, zigbee2mqtt. Home Assistant and monitoring
+  remain on Alloy (HA metrics need a token over the network; monitoring hosts
+  the stack).
+- Central monitoring Alloy scrapes are generated from `inventory.metrics`
+  (node :9100, app exporters, restic :9753); no file_sd.
+- Logs: guest `systemd-journal-upload` → monitoring `systemd-journal-remote`
+  (`/var/lib/monitoring/journal-remote`, 7-day cleanup, `chattr +C`) → central
+  Vector `journald`/`remote_journal` → Loki. Verified with a fresh `coredns`
+  log arriving as `{host="coredns", job="systemd-journal"}`.
+- Monitoring `limits.memory` raised 1536 → 1792 MiB for the Vector process.
+- Result: 11 Alloy instances → 2; host `AnonPages` 2.11 → **1.63 GiB**;
+  `MemAvailable` 3.95 → **4.52 GiB**; container anon total 1.59 GiB.
+- Failed units retained everywhere (`node_systemd_unit_state{state="failed"}`
+  present on all light guests); node/app/restic scrapes all `up=1`.
+- Caveats: Vector `since_now=true` means entries during a Vector restart are
+  skipped; journal files cleaned after 7 days; node_exporter runs as root;
+  central scrape config is static per deploy.
+
+**Option B — `node_exporter` + lightweight log shipper (recommended)**
+
+- Per guest: `prometheus-node-exporter` (~20 MiB RSS, or `set_collectors` for
+  the same set) plus `systemd-journal-upload` (~5–10 MiB) or `vector` for
+  journald.
+- Move the per-guest app scrapes (mosquitto, mqtt-exporter, home-assistant,
+  restic) into the monitoring guest's Alloy, which can reach them over
+  `incusbr-vpn`.
+- Expected: ~30–40 MiB/guest instead of 100–220 MiB; fleet saving ~0.7–1.3 GiB
+  RSS. Keeps node metrics and failed-unit state; logs need a central
+  `systemd-journal-remote` and a small reader for Loki.
+- Risk: moderate refactor; porting the scrape configs and validating the log
+  path.
+
+**Option C — single `vector` per guest**
+
+- `host_metrics` + `prometheus_scrape` + `journald` sources →
+  `prometheus_remote_write` + `loki` sinks.
+- One process, ~40–80 MiB RSS typical; avoids two agents.
+- Risk: porting Alloy configs to Vector TOML and validating component parity
+  (systemd unit state, node metrics).
+
+**Watch:** per-guest `anon`/`file`/`current`, RSS, node/incus metric coverage,
+Loki log continuity, failed-unit alerting.
+
+**Rollback:** re-enable `services.alloy` via the guest module.
 
 ### E7 — KSM: measure before committing
 

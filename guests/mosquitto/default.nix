@@ -31,6 +31,7 @@ in
   # Keep systemd credentials (mosquitto's passwordFile) working without nesting;
   # see modules/lxc-credentials.nix for why and the caveat.
   local.lxc.allowSystemdCredentials = true;
+  local.monitoring.mode = "light";
 
   networking = {
     hostName = "mosquitto";
@@ -135,33 +136,27 @@ in
   };
 
   # Broker metrics for the dashboard: the exporter subscribes to $SYS/# on the
-  # local broker and serves Prometheus metrics on loopback; the Alloy agent
-  # scrapes it (extra alloy file) and remote-writes to the monitoring workload.
+  # local broker and serves Prometheus metrics on the private bridge; the
+  # monitoring Alloy scrapes it (centralized scraping).
   systemd.services.mosquitto-exporter = {
     description = "Prometheus exporter for Mosquitto";
     wantedBy = [ "multi-user.target" ];
     after = [ "mosquitto.service" ];
     requires = [ "mosquitto.service" ];
     serviceConfig = {
-      ExecStart = "${lib.getExe mosquittoExporter} --endpoint tcp://127.0.0.1:1883 --bind-address 127.0.0.1:9234";
+      ExecStart = "${lib.getExe mosquittoExporter} --endpoint tcp://127.0.0.1:1883 --bind-address 0.0.0.0:9234";
       EnvironmentFile = config.sops.templates."mosquitto-exporter.env".path;
       DynamicUser = true;
       Restart = "on-failure";
     };
   };
 
-  environment.etc."alloy/mosquitto.alloy".text = ''
-    prometheus.scrape "mosquitto" {
-      targets    = [{ __address__ = "127.0.0.1:9234" }]
-      forward_to = [prometheus.relabel.host.receiver]
-    }
-  '';
-
   # SSH only on the private backplane (eth0, incusbr-vpn); on the LAN NIC (eth1)
   # expose just MQTT. No global ports - everything is per-interface.
   networking.firewall.interfaces.eth0.allowedTCPPorts = [
     22
     1883
+    9234
   ];
   networking.firewall.interfaces.eth1 = lib.mkIf config.local.lan.enable {
     allowedTCPPorts = [ 1883 ];

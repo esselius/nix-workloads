@@ -16,6 +16,8 @@
   # modules/lxc-credentials.nix for why and the caveat).
   local.lxc.allowSystemdCredentials = true;
 
+  local.monitoring.mode = "light";
+
   networking = {
     hostName = "step-ca";
     # The incus image configures eth0 with systemd-networkd, not dhcpcd.

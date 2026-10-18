@@ -6,6 +6,74 @@
   ...
 }:
 let
+  inv = import ../../inventory.nix;
+
+  centralScrapes = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (
+      svc: m:
+      let
+        id = lib.replaceStrings [ "-" ] [ "_" ] svc;
+        ip = inv.ipFor config.local.env svc;
+        rules = ''
+          rule {
+            target_label = "host"
+            replacement  = "${svc}"
+          }
+          rule {
+            target_label = "node_type"
+            replacement  = "container"
+          }
+        '';
+      in
+      lib.optionalString (m.node or false) ''
+        prometheus.scrape "${id}_node" {
+          targets    = [{ __address__ = "${ip}:9100" }]
+          job_name   = "integrations/unix"
+          forward_to = [prometheus.relabel.${id}_node.receiver]
+        }
+
+        prometheus.relabel "${id}_node" {
+          forward_to = [prometheus.remote_write.default.receiver]
+          ${rules}
+        }
+      ''
+      + lib.optionalString (m.restic or false) ''
+        prometheus.scrape "${id}_restic" {
+          targets    = [{ __address__ = "${ip}:9753" }]
+          job_name   = "restic-exporter"
+          forward_to = [prometheus.relabel.${id}_restic.receiver]
+        }
+
+        prometheus.relabel "${id}_restic" {
+          forward_to = [prometheus.remote_write.default.receiver]
+          ${rules}
+        }
+      ''
+      + lib.optionalString (m ? app) (
+        let
+          a = m.app;
+        in
+        ''
+          prometheus.scrape "${id}_app" {
+            targets    = [
+              {
+                __address__      = "${ip}:${toString a.port}"
+                __metrics_path__ = "${a.path or "/metrics"}"
+              },
+            ]
+            job_name   = "${a.job}"
+            forward_to = [prometheus.relabel.${id}_app.receiver]
+          }
+
+          prometheus.relabel "${id}_app" {
+            forward_to = [prometheus.remote_write.default.receiver]
+            ${rules}
+          }
+        ''
+      )
+    ) inv.metrics
+  );
+
   # Receives Grafana's webhook JSON and re-publishes it to ntfy in ntfy's own
   # JSON format, so notifications show a title + message instead of a raw blob.
   relayScript = pkgs.writeText "grafana-ntfy-relay.py" ''
@@ -941,6 +1009,77 @@ in
     }
   '';
 
+  environment.etc."alloy/centralized.alloy".text = centralScrapes;
+
+  systemd.tmpfiles.rules = [
+    "d /var/lib/monitoring/journal-remote 0755 root root -"
+    "d /var/lib/monitoring/vector 0755 root root -"
+  ];
+
+  systemd.services.journal-remote = {
+    description = "Accept journal uploads from guests";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "systemd-tmpfiles-setup.service" ];
+    serviceConfig = {
+      ExecStart = "${config.systemd.package}/lib/systemd/systemd-journal-remote --listen-http=0.0.0.0:19532 --output=/var/lib/monitoring/journal-remote --split-mode=host";
+      ExecStartPre = "-${pkgs.e2fsprogs}/bin/chattr +C /var/lib/monitoring/journal-remote";
+      UMask = "0022";
+      Restart = "on-failure";
+      RestartSec = "5s";
+      User = "root";
+    };
+  };
+
+  systemd.services.journal-remote-cleanup = {
+    description = "Delete uploaded journals older than 7 days";
+    startAt = "daily";
+    serviceConfig.Type = "oneshot";
+    script = ''
+      ${pkgs.findutils}/bin/find /var/lib/monitoring/journal-remote -type f -name '*.journal' -mtime +7 -delete
+    '';
+  };
+
+  # Read the uploaded journal files and push them to Loki. Running as root
+  # avoids DynamicUser/StateDirectory ownership problems on the shared volume.
+  services.vector = {
+    enable = true;
+    settings = {
+      data_dir = "/var/lib/monitoring/vector";
+      sources.remote_journal = {
+        type = "journald";
+        journal_directory = "/var/lib/monitoring/journal-remote";
+        current_boot_only = false;
+        since_now = true;
+      };
+      transforms.journal = {
+        type = "remap";
+        inputs = [ "remote_journal" ];
+        source = ''
+          if exists(."_HOSTNAME") {
+            .host = ."_HOSTNAME"
+          }
+          .job = "systemd-journal"
+        '';
+      };
+      sinks.loki = {
+        type = "loki";
+        inputs = [ "journal" ];
+        endpoint = "http://127.0.0.1:3100";
+        encoding.codec = "json";
+        labels = {
+          host = "{{ host }}";
+          job = "{{ job }}";
+        };
+      };
+    };
+  };
+
+  systemd.services.vector.serviceConfig = {
+    DynamicUser = lib.mkForce false;
+    User = lib.mkForce "root";
+    Group = lib.mkForce "root";
+  };
+
   # `.dev` is HSTS-preloaded, so the Grafana web UI must be HTTPS. Grafana has no
   # ACME challenge server, so nginx terminates TLS on :443 (and serves the
   # http-01 challenge on :80), proxying to Grafana on loopback. Certs come from
@@ -981,6 +1120,7 @@ in
     443
     3100
     8428
+    19532
   ];
 
   system.stateVersion = "26.05";

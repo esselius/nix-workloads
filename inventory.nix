@@ -147,8 +147,8 @@ let
       oomPriority = "-300";
     };
     monitoring = {
-      limit = "1536MiB";
-      swap = "512MiB";
+      limit = "1792MiB";
+      swap = "256MiB";
       oomPriority = "100";
     };
     kanidm = {
@@ -198,6 +198,52 @@ let
     };
   };
 
+  # Central-scrape metadata for guests in `light` monitoring mode: `node`
+  # enables the guest's node_exporter target, `app` is the guest's application
+  # exporter (`port` plus optional `path` and `job`), `restic` is the
+  # restic-exporter on :9753. Services not listed here keep the per-guest
+  # Alloy and its local scrapes.
+  metrics = {
+    attic = {
+      node = true;
+    };
+    backup = {
+      node = true;
+    };
+    coredns = {
+      node = true;
+    };
+    homepage = {
+      node = true;
+    };
+    kanidm = {
+      node = true;
+      restic = true;
+    };
+    mosquitto = {
+      node = true;
+      app = {
+        port = 9234;
+        job = "mosquitto";
+      };
+    };
+    node-red = {
+      node = true;
+    };
+    step-ca = {
+      node = true;
+      restic = true;
+    };
+    zigbee2mqtt = {
+      node = true;
+      restic = true;
+      app = {
+        port = 9000;
+        job = "zigbee2mqtt";
+      };
+    };
+  };
+
   hostFor = env: service: envs.${env}.placement.${service} or envs.${env}.defaultHost;
 in
 {
@@ -205,6 +251,7 @@ in
     envs
     services
     memory
+    metrics
     hostFor
     ;
 

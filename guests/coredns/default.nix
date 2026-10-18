@@ -67,6 +67,8 @@ in
     "${modulesPath}/virtualisation/lxc-container.nix"
   ];
 
+  local.monitoring.mode = "light";
+
   networking = {
     hostName = "coredns";
     # The incus image configures eth0 with systemd-networkd, not dhcpcd.
