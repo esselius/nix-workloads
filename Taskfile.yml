@@ -259,7 +259,7 @@ tasks:
         env="${ENV:-homelab}"
         remote="$(nix eval --raw --impure --expr "let i = import ./inventory.nix; e = i.envs.${env}; in (builtins.getAttr e.defaultHost e.hosts).remote")"
         names="{{.CLI_ARGS}}"
-        [ -n "$names" ] || names="home-assistant zigbee2mqtt kanidm step-ca monitoring"
+        [ -n "$names" ] || names="home-assistant zigbee2mqtt kanidm step-ca monitoring node-red"
         fail=0
         for name in $names; do
           echo "==> restore-test $name ($env)"
@@ -286,6 +286,7 @@ tasks:
           kanidm)     [ -n "$(ls -A "$scratch/var/lib/kanidm" 2>/dev/null)" ] || { echo "  empty /var/lib/kanidm"; ok=0; } ;;
           step-ca)    [ -n "$(ls -A "$scratch/var/lib/step-ca" 2>/dev/null)" ] || { echo "  empty /var/lib/step-ca"; ok=0; } ;;
           monitoring) [ -f "$scratch/var/lib/monitoring/grafana/data/grafana.db" ] || { echo "  missing grafana.db"; ok=0; } ;;
+          node-red)   [ -f "$scratch/var/lib/node-red/flows.json" ] || { echo "  missing flows.json"; ok=0; } ;;
           zigbee2mqtt)
             if [ -z "$(ls -A /var/lib/zigbee2mqtt 2>/dev/null)" ]; then
               echo "  no zigbee2mqtt state (unit gated off without the coordinator) - skipping"
@@ -306,6 +307,108 @@ tasks:
         else
           echo "restore drill: FAILED"; exit 1
         fi
+
+  # Restore a *homelab* backup into the *dev* env and prove the service loads.
+  # Mirrors the guest's repo (restic copy) from the homelab backup server into
+  # the dev one over the Mac, then restores it on top of the dev guest and
+  # restarts the workload. This is the sandbox rehearsal of a real recovery.
+  dr-restore:
+    desc: "Restore a workload's homelab backup into the dev env and verify it loads. Usage: ENV=dev task dr-restore -- <name>"
+    cmds:
+      - |
+        set -e
+        name="{{index .CLI_ARGS_LIST 0}}"
+        [ -n "$name" ] || { echo "Usage: ENV=dev task dr-restore -- <name>" >&2; exit 1; }
+        [ "${ENV:-homelab}" = dev ] || { echo "dr-restore targets the dev env: ENV=dev task dr-restore -- <name>" >&2; exit 1; }
+        for b in restic sops jq colima nix; do
+          command -v "$b" >/dev/null || { echo "$b not found (run in the devshell)" >&2; exit 1; }
+        done
+
+        vmip="$(colima status --profile dev --json 2>/dev/null | jq -r '.ip_address // empty')"
+        [ -n "$vmip" ] || { echo "colima profile 'dev' is not running" >&2; exit 1; }
+
+        pwf="$(mktemp)"; trap 'rm -f "$pwf"' EXIT
+        sops -d --extract '["restic_password"]' secrets/backup.yaml > "$pwf"
+        export RESTIC_REST_USERNAME=restic
+        export RESTIC_REST_PASSWORD="$(sops -d --extract '["restic_rest_password"]' secrets/backup.yaml)"
+
+        prodip="$(nix eval --raw --impure --expr "let i = import ./inventory.nix; in i.ipFor \"homelab\" \"backup\"")"
+        prod="rest:http://$prodip:8000/$name"
+        dev="rest:http://$vmip:8000/$name"
+
+        echo "==> mirror $name: homelab -> dev ($vmip:8000)"
+        restic -r "$dev" --password-file "$pwf" init >/dev/null 2>&1 || true
+        restic -r "$dev" --password-file "$pwf" copy \
+          --from-repo "$prod" --from-password-file "$pwf" 2>&1 | tail -2
+
+        echo "==> restore $name into the dev guest and load it"
+        INCUS_REMOTE=colima-dev incus exec "$name" -- sh -s "$name" <<'RELOAD'
+        set -eu
+        name="$1"
+        case "$name" in
+          home-assistant) svc=home-assistant ;;
+          kanidm)         svc=kanidm ;;
+          step-ca)        svc=step-ca ;;
+          monitoring)     svc=grafana ;;
+          node-red)       svc=node-red ;;
+          zigbee2mqtt)    svc=zigbee2mqtt ;;
+          *) echo "no service mapping for $name"; exit 1 ;;
+        esac
+        echo "  stop $svc"
+        systemctl stop "$svc" 2>/dev/null || true
+        echo "  restore latest -> /"
+        restic-system restore latest --target /
+        if [ "$name" = zigbee2mqtt ]; then
+          echo "  zigbee2mqtt restored (data-only; not loaded without the coordinator)"
+          exit 0
+        fi
+        if [ "$name" = home-assistant ] && [ -f /var/backup/hass.dump ]; then
+          echo "  pg_restore hass.dump into the recorder db"
+          systemctl start postgresql
+          for _ in $(seq 1 20); do runuser -u postgres -- pg_isready -q && break; sleep 1; done
+          runuser -u postgres -- pg_restore -d hass --clean --if-exists /var/backup/hass.dump || true
+        fi
+        echo "  start $svc"
+        systemctl start "$svc"
+        ok=0
+        for _ in $(seq 1 45); do
+          systemctl is-active --quiet "$svc" && { ok=1; break; }
+          sleep 2
+        done
+        if [ "$ok" = 0 ]; then echo "  $svc did not become active"; exit 1; fi
+        if command -v curl >/dev/null 2>&1; then
+          http=0
+          for _ in $(seq 1 45); do
+            case "$name" in
+              home-assistant) curl -sf -o /dev/null http://127.0.0.1:8123/ && http=1 ;;
+              kanidm)         curl -skf -o /dev/null https://127.0.0.1/status && http=1 ;;
+              step-ca)        curl -skf -o /dev/null https://127.0.0.1:8443/health && http=1 ;;
+              monitoring)     curl -sf -o /dev/null http://127.0.0.1:3000/api/health && http=1 ;;
+              node-red)       curl -sf -o /dev/null http://127.0.0.1:1880/ && http=1 ;;
+              *)              http=1 ;;
+            esac
+            [ "$http" = 1 ] && break
+            sleep 2
+          done
+          if [ "$http" = 0 ]; then echo "  $name is active but its endpoint is not responding"; exit 1; fi
+        fi
+        echo "  OK: $name loaded in dev"
+        RELOAD
+        echo "==> $name: homelab backup restored into dev and loaded"
+
+  dr-restore-all:
+    desc: "Restore every supported workload's homelab backup into dev and verify it loads. Usage: ENV=dev task dr-restore-all"
+    cmds:
+      - |
+        set -e
+        [ "${ENV:-homelab}" = dev ] || { echo "dr-restore-all targets the dev env: ENV=dev task dr-restore-all" >&2; exit 1; }
+        names="kanidm home-assistant step-ca monitoring zigbee2mqtt node-red"
+        fail=0
+        for n in $names; do
+          echo "===== dr-restore $n ====="
+          if ! task dr-restore -- "$n"; then echo "  $n: FAILED"; fail=1; fi
+        done
+        if [ "$fail" = 0 ]; then echo "dr-restore-all: OK"; else echo "dr-restore-all: FAILED"; exit 1; fi
 
   # --- Dev access (macOS) ---------------------------------------------------
   # The local `dev` env runs behind an incus bridge inside a Colima VM. Routing

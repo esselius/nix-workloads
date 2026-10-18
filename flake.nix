@@ -283,6 +283,8 @@
               pkgs.sops
               pkgs.age
               pkgs.ssh-to-age
+              # `task dr-restore`: restic copy a homelab repo into the dev env.
+              pkgs.restic
               # Administer the kanidm (idm) workload; Kanidm is CLI-first.
               pkgs.kanidm_1_11
               # Push closures to the Attic cache workload (`task cache-push`).

@@ -52,6 +52,20 @@ in
           path = "/var/lib/restic";
         };
       }
+    ]
+    ++ lib.optionals (config.local.env != "homelab") [
+      {
+        # Publish the dev backup server on the incus host's own address (the
+        # Colima VM) so the Mac can `restic copy` production snapshots into
+        # it - the Mac cannot route into the dev subnet. Dev-only: on the
+        # homelab the REST server stays on the private backplane.
+        name = "rest";
+        type = "proxy";
+        properties = {
+          "listen" = "tcp:0.0.0.0:8000";
+          "connect" = "tcp:${staticIp}:8000";
+        };
+      }
     ];
 
     # Seed root's SSH key on create (see terraform/example/default.nix for why
