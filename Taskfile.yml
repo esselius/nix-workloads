@@ -246,6 +246,67 @@ tasks:
           nix build ".#checks.${system}.${name}"
         fi
 
+  # --- Backup restore drill (DR) --------------------------------------------
+  # Proves the restic backups are actually restorable: for each guest it runs
+  # `restic check` and restores the latest snapshot of the env's backup repo to
+  # a scratch dir, then asserts the expected state came back. Run against `dev`
+  # as a rehearsal, or against `homelab` to validate the production backups.
+  restore-test:
+    desc: "Backup restore drill (check + restore latest + verify). Usage: [ENV=dev] task restore-test [-- <name>...]"
+    cmds:
+      - |
+        set -e
+        env="${ENV:-homelab}"
+        remote="$(nix eval --raw --impure --expr "let i = import ./inventory.nix; e = i.envs.${env}; in (builtins.getAttr e.defaultHost e.hosts).remote")"
+        names="{{.CLI_ARGS}}"
+        [ -n "$names" ] || names="home-assistant zigbee2mqtt kanidm step-ca monitoring"
+        fail=0
+        for name in $names; do
+          echo "==> restore-test $name ($env)"
+          if INCUS_REMOTE="$remote" incus exec "$name" -- sh -s "$name" <<'DRILL'
+        set -eu
+        name="$1"
+        scratch=/var/tmp/restore-drill
+        rm -rf "$scratch"; mkdir -p "$scratch"
+        echo "  restic check --read-data-subset=5%"
+        if ! restic-system check --read-data-subset=5% >/dev/null 2>&1; then
+          # A killed backup/restore can leave a stale lock; clear it and retry.
+          restic-system unlock >/dev/null 2>&1 || true
+          restic-system check --read-data-subset=5% >/dev/null
+        fi
+        echo "  restore latest -> $scratch"
+        restic-system restore latest --target "$scratch" >/dev/null
+        ok=1
+        case "$name" in
+          home-assistant)
+            [ -d "$scratch/var/lib/hass/.storage" ] || { echo "  missing /var/lib/hass/.storage"; ok=0; }
+            [ -f "$scratch/var/backup/hass.dump" ] || { echo "  missing hass.dump"; ok=0; }
+            pg_restore --list "$scratch/var/backup/hass.dump" >/dev/null 2>&1 || { echo "  hass.dump is not a valid pg dump"; ok=0; }
+            ;;
+          kanidm)     [ -n "$(ls -A "$scratch/var/lib/kanidm" 2>/dev/null)" ] || { echo "  empty /var/lib/kanidm"; ok=0; } ;;
+          step-ca)    [ -n "$(ls -A "$scratch/var/lib/step-ca" 2>/dev/null)" ] || { echo "  empty /var/lib/step-ca"; ok=0; } ;;
+          monitoring) [ -f "$scratch/var/lib/monitoring/grafana/data/grafana.db" ] || { echo "  missing grafana.db"; ok=0; } ;;
+          zigbee2mqtt)
+            if [ -z "$(ls -A /var/lib/zigbee2mqtt 2>/dev/null)" ]; then
+              echo "  no zigbee2mqtt state (unit gated off without the coordinator) - skipping"
+            else
+              [ -f "$scratch/var/lib/zigbee2mqtt/database.db" ] || { echo "  missing database.db"; ok=0; }
+              [ -f "$scratch/var/lib/zigbee2mqtt/configuration.yaml" ] || { echo "  missing configuration.yaml"; ok=0; }
+            fi
+            ;;
+          *) echo "  (no specific assertions)";;
+        esac
+        rm -rf "$scratch"
+        [ "$ok" = 1 ]
+        DRILL
+          then echo "    PASS"; else echo "    FAIL"; fail=1; fi
+        done
+        if [ "$fail" = 0 ]; then
+          echo "restore drill: OK"
+        else
+          echo "restore drill: FAILED"; exit 1
+        fi
+
   # --- Dev access (macOS) ---------------------------------------------------
   # The local `dev` env runs behind an incus bridge inside a Colima VM. Routing
   # the Mac into that subnet breaks its default route (macOS/vmnet), so nothing
