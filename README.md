@@ -506,6 +506,26 @@ Caveat: this is **local only** - the repositories live on `rpi5-8gb`'s pool, so 
 board loss loses the backups too. Add an offsite rclone/B2 copy of the
 `backup-data` repo when that matters (see Known risks).
 
+### Restore drill
+
+`task restore-test` proves the backups are actually restorable. For each
+backed-up guest it runs `restic check --read-data-subset=5%`, restores the
+latest snapshot of the env's repo to a scratch dir, and asserts the expected
+state came back (HA's `.storage` plus a dump that `pg_restore --list` accepts,
+Kanidm/step-ca state, Grafana's `grafana.db`, and Zigbee2MQTT's DB/config - the
+last skipped when the coordinator is absent, e.g. in `dev`):
+
+```fish
+task restore-test                    # homelab (validates the production backups)
+ENV=dev task restore-test            # rehearsal against the dev env's own repos
+ENV=dev task restore-test -- kanidm  # one guest
+```
+
+It runs `restic-system` inside each guest, so it uses that guest's configured
+repo and credentials unchanged, and never writes outside `/var/tmp`. A killed
+backup can leave a stale restic lock; the drill clears it (`restic unlock`) and
+retries.
+
 ## Landing page (Homepage)
 
 The `homepage` workload runs gethomepage (`services.homepage-dashboard`) as a
