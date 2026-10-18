@@ -12,7 +12,7 @@ at least 24 h (use 1–2 h only for quick signal checks).
 | E3 | **running** | monitoring `limits.memory.swap` 256→512 MiB (applied 16:07 UTC); swap events/high/max/fail still 0, swap use 167 MiB, zram RAM 196 MiB |
 | E4 | reverted | zram/swappiness change reverted; re-run after E1/E2 |
 | E5 | partial | dev-only: 256 MiB hard-limit `oom-test` container stopped on a 512 MiB `/dev/shm` allocation; cgroup OOM path validated, host-level priority ordering not forced |
-| E7 | pending | KSM; host + guest service config, run after E1/E2 |
+| E7 | **pilot running** | host KSM + `use_zero_pages=1` + scan-time advisor; `MemoryKSM=yes` on monitoring/HA/z2m/mosquitto services (deployed 17:27 UTC). Interim ~8 min: sharing 2052 pages (~8 MiB), zero pages 8093 (~33 MiB), volatile 69531, unshared 6212, `cow_ksm` 10912 (~17/s), ksmd ~1 % CPU; net tens of MiB — below the 0.2–0.5 GiB analytic estimate |
 | E8 | complete | duperemove dedup on container rootfs `/nix/store`: btrfs used 23.81 GiB → 19.15 GiB (~4.66 GiB); not reversible |
 | E6, E9 | structural | deferred |
 

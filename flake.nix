@@ -143,6 +143,7 @@
               # Container-specific size cuts (no self-build/install tooling,
               # docs, or nixpkgs-source flake pin); see modules/minimal.nix.
               ./modules/minimal.nix
+              ./modules/ksm.nix
               ./modules/monitoring-agent.nix
               ./modules/nix-cache.nix
               # Reload nginx when an ACME cert lands after nginx started.

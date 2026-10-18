@@ -76,6 +76,14 @@ in
     "${modulesPath}/virtualisation/lxc-container.nix"
   ];
 
+  local.ksm.services = [
+    "alloy"
+    "grafana"
+    "loki"
+    "victoriametrics"
+    "nginx"
+  ];
+
   networking = {
     hostName = "monitoring";
     # The incus image configures eth0 with systemd-networkd, not dhcpcd.

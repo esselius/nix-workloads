@@ -32,6 +32,12 @@ in
   # see modules/lxc-credentials.nix for why and the caveat.
   local.lxc.allowSystemdCredentials = true;
 
+  local.ksm.services = [
+    "alloy"
+    "mosquitto"
+    "mosquitto-exporter"
+  ];
+
   networking = {
     hostName = "mosquitto";
     # The incus image configures eth0 with systemd-networkd, not dhcpcd.

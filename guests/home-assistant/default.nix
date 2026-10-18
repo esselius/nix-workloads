@@ -13,6 +13,13 @@
     "${modulesPath}/virtualisation/lxc-container.nix"
   ];
 
+  local.ksm.services = [
+    "alloy"
+    "home-assistant"
+    "postgresql"
+    "nginx"
+  ];
+
   networking = {
     hostName = "home-assistant";
     # The incus image configures eth0 with systemd-networkd, not dhcpcd.
