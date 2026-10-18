@@ -526,6 +526,26 @@ repo and credentials unchanged, and never writes outside `/var/tmp`. A killed
 backup can leave a stale restic lock; the drill clears it (`restic unlock`) and
 retries.
 
+### Restore a homelab backup into dev
+
+`ENV=dev task dr-restore -- <name>` rehearses a full recovery in the sandbox
+before trusting it in production. It `restic copy`s the guest's **homelab** repo
+into the dev backup server, restores the latest snapshot on top of the running
+dev guest, restarts the workload (Home Assistant also re-imports the recorder
+`pg_dump`), and confirms it loads (`systemctl is-active` + the service endpoint).
+The Mac brokers the copy (it reaches the homelab backup over WireGuard and the
+dev one over the Colima VM's own address - the dev backup server is published
+there via an `incus` `proxy` device, since the Mac cannot route into the dev
+subnet).
+
+```fish
+ENV=dev task dr-restore -- kanidm
+ENV=dev task dr-restore -- home-assistant
+```
+
+Supported: `kanidm`, `home-assistant`, `step-ca`, `monitoring`; `zigbee2mqtt` is
+data-only and cannot load without the coordinator.
+
 ## Landing page (Homepage)
 
 The `homepage` workload runs gethomepage (`services.homepage-dashboard`) as a
