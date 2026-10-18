@@ -16,6 +16,24 @@ at least 24 h (use 1–2 h only for quick signal checks).
 | E8 | complete | duperemove dedup on container rootfs `/nix/store`: btrfs used 23.81 GiB → 19.15 GiB (~4.66 GiB); not reversible |
 | E6, E9 | structural | deferred |
 
+### Check-in 2026-10-18 16:54 UTC
+
+- All 11 instances running, 0 failed units, host load 0.30, `MemAvailable`
+  ~3.95 GiB, zram swap used ~1.19 GiB.
+- Refaults: total now **3.8/s**, 2 h average **33.3/s**, 2 h max **125.8/s**;
+  the larger early values line up with the E8 dedup scan and periodic work.
+- Working set (`active_file`): monitoring 300 MiB is the largest; everything
+  else 31–98 MiB. Current usage is well below every limit, e.g. monitoring
+  1035/1536, HA 542/1280, zigbee2mqtt 399/1024.
+- OOM kills 0; PSI memory full ~0, PSI io full ~0.7 %; NVMe wear 3 %, spare
+  100 %, write rate ~0.34 MB/s; btrfs used 19.08 GiB.
+- 24 h cgroup counters: `memory.max` events monitoring 657, homepage 220,
+  kanidm 114 (cache capping, not OOM); swap cap hits home-assistant 220,
+  zigbee2mqtt 39, homepage 7 — these happened during the reverted E4
+  swappiness window, so keep swap caps in mind if E4 is retried.
+- E3: monitoring swap use ~165 MiB, no `swap_events_*`; neutral so far.
+- Next: let E1/E2 close out, then retry E4/E3 in isolation, then E7.
+
 ## Non-structural set
 
 These keep the current 11-instance layout and do not replace or merge
