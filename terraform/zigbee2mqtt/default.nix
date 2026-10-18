@@ -3,7 +3,9 @@ let
   # Zigbee2MQTT (migrated off adama). Pinned to rpi5-8gb because the USB
   # coordinator is physical - the instance can never migrate with it. Reached as
   # `zigbee2mqtt.int.esselius.dev` (an A record in the coredns zone).
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "zigbee2mqtt";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "zigbee2mqtt";
+  mem = inv.memory.zigbee2mqtt;
 in
 {
   # Persistent volume for Zigbee2MQTT state (device database + coordinator
@@ -29,6 +31,12 @@ in
     ];
     running = true;
 
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
+
     depends_on = [ "incus_storage_volume.zigbee2mqtt_data" ];
 
     device = [
@@ -51,16 +59,15 @@ in
         };
       }
       {
-        # The USB coordinator (SONOFF ZBDongle-E, 1a86:55d4). unix-hotplug is a
-        # container-only device type: incus watches udev and passes the resulting
-        # character device (/dev/ttyACM0) into the container, following replugs.
-        # The instance starts fine without it, so a replug or a board move never
-        # restart-loops the unit.
+        # The USB coordinator (SONOFF ZBDongle-E, 1a86:55d4). unix-char passes
+        # the host's stable by-id symlink at container start, which survives a
+        # host reboot; unix-hotplug only reacts to devices that appear after the
+        # container starts, so a reboot left /dev/ttyACM0 missing here.
         name = "coordinator";
-        type = "unix-hotplug";
+        type = "unix-char";
         properties = {
-          vendorid = "1a86";
-          productid = "55d4";
+          source = "/dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_3.0_USB_Dongle_Plus_V2_20230807100441-if00";
+          path = "/dev/ttyACM0";
           # 0666 so the z2m service (which runs with PrivateUsers) can open it
           # regardless of the host's dialout GID vs the container's.
           mode = "0666";

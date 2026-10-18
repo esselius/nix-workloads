@@ -1,7 +1,9 @@
 { lib, config, ... }:
 let
   # Stable target for the MQTT clients (z2m/hass/nr/p1ib). See README Networking.
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "mosquitto";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "mosquitto";
+  mem = inv.memory.mosquitto;
 in
 {
   resource.incus_instance.mosquitto = {
@@ -13,6 +15,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     # NOTE: security.nesting is intentionally off. The guest patches LXC's
     # distrobuilder generator so systemd credentials (the broker passwords)

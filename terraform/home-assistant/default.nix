@@ -3,7 +3,9 @@ let
   # Home Assistant (migrated off adama). Recorder backed by a co-located
   # PostgreSQL (see guests/home-assistant). Pinned on the vpn bridge; reached as
   # `home-assistant.int.esselius.dev` (an A record in the coredns zone).
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "home-assistant";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "home-assistant";
+  mem = inv.memory.home-assistant;
 in
 {
   # Persistent volume for the whole HA config dir (configuration.yaml, .storage,
@@ -40,6 +42,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     depends_on = [
       "incus_storage_volume.home_assistant_data"

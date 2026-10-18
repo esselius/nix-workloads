@@ -3,7 +3,9 @@ let
   # Internal ACME certificate authority. Pinned on the vpn bridge; clients reach
   # it by name (`step-ca.int.esselius.dev`, an A record in the coredns zone) and
   # trust the Esselius Root CA, so the issued certs are already trusted.
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "step-ca";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "step-ca";
+  mem = inv.memory.step-ca;
 in
 {
   resource.incus_instance.step-ca = {
@@ -15,6 +17,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     # Instance-level eth0 override. incus validates the instance device on its
     # own (it does not inherit the profile's `network`), so the full NIC has to

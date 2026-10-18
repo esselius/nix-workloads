@@ -3,7 +3,9 @@ let
   # Landing page for the homelab. Pinned on the vpn bridge; reached as
   # `homepage.int.esselius.dev` (an A record in the coredns zone), gated by
   # oauth2-proxy -> Kanidm like the other web UIs.
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "homepage";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "homepage";
+  mem = inv.memory.homepage;
 in
 {
   resource.incus_instance.homepage = {
@@ -15,6 +17,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     device = [
       {

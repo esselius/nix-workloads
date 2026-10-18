@@ -3,7 +3,9 @@ let
   # Self-hosted Attic binary cache: the shared substituter the Mac's linux-builder
   # pushes to and every host/guest pulls from. Pinned on the vpn bridge; reached
   # as `cache.int.esselius.dev` (an A record in the coredns zone).
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "attic";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "attic";
+  mem = inv.memory.attic;
 in
 {
   # Persistent volume for the cache: sqlite DB + chunked NAR storage. Mounted at
@@ -28,6 +30,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     depends_on = [ "incus_storage_volume.attic_data" ];
 

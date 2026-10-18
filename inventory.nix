@@ -125,10 +125,88 @@ let
     };
   };
 
+  # Per-workload container memory allocation, keyed by service. `limit` is the
+  # hard cgroup max the instance may use (page cache included, so it can be
+  # above anonymous usage); `swap` allows that much zram-backed swap on top;
+  # `oomPriority` is the Incus OOM adjustment (-1000..1000). The shared
+  # `container` profile remains the fallback for anything not listed here.
+  memory = {
+    edge = {
+      limit = "256MiB";
+      swap = "64MiB";
+      oomPriority = "0";
+    };
+    example = {
+      limit = "256MiB";
+      swap = "64MiB";
+      oomPriority = "0";
+    };
+    mosquitto = {
+      limit = "320MiB";
+      swap = "64MiB";
+      oomPriority = "-300";
+    };
+    monitoring = {
+      limit = "1280MiB";
+      swap = "256MiB";
+      oomPriority = "100";
+    };
+    kanidm = {
+      limit = "384MiB";
+      swap = "128MiB";
+      oomPriority = "-200";
+    };
+    coredns = {
+      limit = "320MiB";
+      swap = "64MiB";
+      oomPriority = "-200";
+    };
+    step-ca = {
+      limit = "384MiB";
+      swap = "128MiB";
+      oomPriority = "-200";
+    };
+    node-red = {
+      limit = "512MiB";
+      swap = "128MiB";
+      oomPriority = "0";
+    };
+    zigbee2mqtt = {
+      limit = "768MiB";
+      swap = "128MiB";
+      oomPriority = "-200";
+    };
+    backup = {
+      limit = "320MiB";
+      swap = "64MiB";
+      oomPriority = "300";
+    };
+    home-assistant = {
+      limit = "1536MiB";
+      swap = "256MiB";
+      oomPriority = "-200";
+    };
+    attic = {
+      limit = "512MiB";
+      swap = "128MiB";
+      oomPriority = "300";
+    };
+    homepage = {
+      limit = "512MiB";
+      swap = "128MiB";
+      oomPriority = "0";
+    };
+  };
+
   hostFor = env: service: envs.${env}.placement.${service} or envs.${env}.defaultHost;
 in
 {
-  inherit envs services hostFor;
+  inherit
+    envs
+    services
+    memory
+    hostFor
+    ;
 
   # The env's DNS zone (also the guests' `local.domain`).
   zoneFor = env: envs.${env}.zone;

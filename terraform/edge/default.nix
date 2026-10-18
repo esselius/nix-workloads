@@ -3,7 +3,9 @@ let
   # Dev-only TLS SNI ingress (see guests/edge). Its `proxy` device publishes the
   # ingress on the incus host's own addresses - the Colima VM's vmnet IP - so
   # the Mac reaches it with no route into the 10.x dev subnet.
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "edge";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "edge";
+  mem = inv.memory.edge;
 in
 {
   resource.incus_instance.edge = {
@@ -15,6 +17,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     device = [
       {

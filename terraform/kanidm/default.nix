@@ -2,7 +2,9 @@
 let
   # OIDC identity provider (WebAuthn/passkeys). Pinned on the vpn bridge;
   # reached by name (`idm.int.esselius.dev`, an A record in the coredns zone).
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "kanidm";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "kanidm";
+  mem = inv.memory.kanidm;
 in
 {
   # Kanidm's database is its whole identity store, so keep it on a volume.
@@ -23,6 +25,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     depends_on = [ "incus_storage_volume.kanidm_data" ];
 

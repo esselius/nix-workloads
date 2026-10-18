@@ -4,7 +4,9 @@ let
   # target, and a cross-host move keeps the same IP (provided the destination
   # host's bridge is the same subnet). Keep it unique per workload and outside
   # any host-reserved range.
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "example";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "example";
+  mem = inv.memory.example;
 in
 {
   # Skeleton workload. To add a new one, copy this directory:
@@ -25,6 +27,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     # Instance-level eth0 override. incus validates the instance device on its
     # own (it does not inherit the profile's `network`), so the full NIC has to

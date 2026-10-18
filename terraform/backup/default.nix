@@ -4,7 +4,9 @@ let
   # vpn bridge; reached as `backup.int.esselius.dev` (an A record in the coredns
   # zone). Plain HTTP on the WireGuard-private backplane (as with MQTT) - restic
   # encrypts the repo client-side, so the transport only needs the private wire.
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "backup";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "backup";
+  mem = inv.memory.backup;
 in
 {
   # Custom storage volume for the restic repositories, on the host's persistent
@@ -30,6 +32,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     depends_on = [ "incus_storage_volume.backup_data" ];
 

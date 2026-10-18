@@ -3,7 +3,9 @@ let
   # Node-RED (the smart-home automations, migrated off adama). Pinned on the vpn
   # bridge; reached as `node-red.int.esselius.dev` (an A record in the coredns
   # zone).
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "node-red";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "node-red";
+  mem = inv.memory.node-red;
 in
 {
   # Persistent volume for Node-RED's state: flows, credentials, palette and
@@ -28,6 +30,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     depends_on = [ "incus_storage_volume.node_red_data" ];
 

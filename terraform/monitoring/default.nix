@@ -3,7 +3,9 @@ let
   # Metrics + logs + dashboards. Pinned on the vpn bridge; Alloy agents on the
   # hosts and guests push here, and Grafana is reached by name
   # (`monitoring.int.esselius.dev`, an A record in the coredns zone).
-  staticIp = (import ../../inventory.nix).ipFor config.local.env "monitoring";
+  inv = import ../../inventory.nix;
+  staticIp = inv.ipFor config.local.env "monitoring";
+  mem = inv.memory.monitoring;
 in
 {
   # Custom storage volume for the monitoring stack's state, on the host's
@@ -29,6 +31,12 @@ in
       "vpn"
     ];
     running = true;
+
+    config = {
+      "limits.memory" = mem.limit;
+      "limits.memory.swap" = mem.swap;
+      "limits.memory.oom_priority" = mem.oomPriority;
+    };
 
     # Persistent data volume, mounted before the guest starts, so VictoriaMetrics
     # / Loki / Grafana state survives `task down` / `task up`. The guest writes
