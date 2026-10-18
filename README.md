@@ -541,6 +541,7 @@ subnet).
 ```fish
 ENV=dev task dr-restore -- kanidm
 ENV=dev task dr-restore -- home-assistant
+ENV=dev task dr-restore-all   # every supported guest
 ```
 
 Supported: `kanidm`, `home-assistant`, `step-ca`, `monitoring`; `zigbee2mqtt` is
