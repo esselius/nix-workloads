@@ -142,17 +142,17 @@ let
       oomPriority = "0";
     };
     mosquitto = {
-      limit = "320MiB";
+      limit = "448MiB";
       swap = "64MiB";
       oomPriority = "-300";
     };
     monitoring = {
-      limit = "1280MiB";
+      limit = "1536MiB";
       swap = "256MiB";
       oomPriority = "100";
     };
     kanidm = {
-      limit = "384MiB";
+      limit = "320MiB";
       swap = "128MiB";
       oomPriority = "-200";
     };
@@ -162,37 +162,37 @@ let
       oomPriority = "-200";
     };
     step-ca = {
-      limit = "384MiB";
+      limit = "512MiB";
       swap = "128MiB";
       oomPriority = "-200";
     };
     node-red = {
-      limit = "512MiB";
+      limit = "384MiB";
       swap = "128MiB";
       oomPriority = "0";
     };
     zigbee2mqtt = {
-      limit = "768MiB";
+      limit = "1024MiB";
       swap = "128MiB";
       oomPriority = "-200";
     };
     backup = {
-      limit = "320MiB";
+      limit = "448MiB";
       swap = "64MiB";
       oomPriority = "300";
     };
     home-assistant = {
-      limit = "1536MiB";
+      limit = "1280MiB";
       swap = "256MiB";
       oomPriority = "-200";
     };
     attic = {
-      limit = "512MiB";
+      limit = "384MiB";
       swap = "128MiB";
       oomPriority = "300";
     };
     homepage = {
-      limit = "512MiB";
+      limit = "384MiB";
       swap = "128MiB";
       oomPriority = "0";
     };
