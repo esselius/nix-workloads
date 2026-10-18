@@ -119,7 +119,7 @@
       frontend.port = 8099;
       homeassistant.enabled = true;
       mqtt = {
-        server = "mqtt://mosquitto.int.esselius.dev:1883";
+        server = "mqtt://mosquitto.${config.local.domain}:1883";
         user = "z2m";
         password = "!" + config.sops.templates."z2m.yaml".path + " mqtt_password";
       };
@@ -158,17 +158,17 @@
     acceptTerms = true;
     defaults = {
       email = "acme@esselius.dev";
-      server = "https://step-ca.int.esselius.dev:8443/acme/internal/directory";
+      server = "https://step-ca.${config.local.domain}:8443/acme/internal/directory";
     };
   };
 
   services.oauth2-proxy = {
     enable = true;
     provider = "oidc";
-    oidcIssuerUrl = "https://idm.int.esselius.dev/oauth2/openid/oauth2-proxy";
+    oidcIssuerUrl = "https://idm.${config.local.domain}/oauth2/openid/oauth2-proxy";
     clientID = "oauth2-proxy";
     email.domains = [ "*" ];
-    redirectURL = "https://zigbee2mqtt.int.esselius.dev/oauth2/callback";
+    redirectURL = "https://zigbee2mqtt.${config.local.domain}/oauth2/callback";
     upstream = [ "http://127.0.0.1:8099" ];
     reverseProxy = true;
     setXauthrequest = true;
@@ -181,7 +181,7 @@
   services.nginx = {
     enable = true;
     recommendedProxySettings = true;
-    virtualHosts."zigbee2mqtt.int.esselius.dev" = {
+    virtualHosts."zigbee2mqtt.${config.local.domain}" = {
       enableACME = true;
       forceSSL = true;
       locations."/" = {

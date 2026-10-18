@@ -105,6 +105,13 @@ in
       };
       serviceConfig = {
         ExecStart = "${pkgs.prometheus-restic-exporter}/bin/restic-exporter.py";
+        # The exporter's `restic check` crashes with KeyError on a repository
+        # that does not exist yet (e.g. before the first backup on a fresh
+        # host), which trips the start-limit and hides all metrics. Make sure
+        # the repo exists first.
+        ExecStartPre = "${pkgs.writeShellScript "restic-ensure-repo" ''
+          restic snapshots >/dev/null 2>&1 || restic init
+        ''}";
         EnvironmentFile = config.sops.templates."restic-rest.env".path;
         CacheDirectory = "restic-exporter";
         Restart = "on-failure";

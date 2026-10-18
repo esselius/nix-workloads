@@ -23,24 +23,40 @@ instance existence. That split is what lets a workload be upgraded in place
 ## Layout
 
 ```
-flake.nix                    flake-parts + terranix; registers workloads + guest systems
-modules/local.nix            shared knobs (domain, CA, ACME, cache, LAN) - see below
-terraform/common.nix         shared terranix config: incus provider + remote
+flake.nix                    flake-parts + terranix; registers workloads + guest systems + envs
+inventory.nix                envs + services: where each workload is addressed and placed
+modules/local.nix            shared knobs (domain, realm, CA, ACME, cache, LAN) - see Environments
+terraform/common.nix         shared terranix config: incus provider + remote (from the env)
+terraform/envs/<env>.nix     selects an env for a terranix config (homelab | dev)
 terraform/<name>/default.nix one workload's infrastructure
 guests/<name>/default.nix    one workload's NixOS system
 secrets/<name>.yaml          sops-encrypted secrets (see Secrets)
 .sops.yaml                   age recipients per secret path
 ```
 
-`terraform/common.nix` points the `lxc/incus` provider at the `rpi5-8gb` remote
-(`https://rpi5-8gb.x.esselius.dev:8443`) and reuses the Mac's client certificate
-from `~/.config/incus`. Add `rpi5-4gb` there when the second board is wanted.
-The remote is the `local.incus.*` option.
+## Environments
 
-Guests never hard-code `int.esselius.dev`, the Esselius CA, or the Attic URL:
-they read the `local.*` options in `modules/local.nix` (whose defaults describe
-the homelab), so a different environment - a local incus VM on the Mac, say - is
-a matter of setting those options rather than forking the configs.
+`inventory.nix` is the single source of truth for **where** a workload runs and
+**where** it is addressed. An *env* is a logical environment - one DNS zone and
+one address space; within an env, *hosts* are incus servers and *placement* maps
+a service to a host:
+
+| Env | Incus host | Zone |
+|------|-----------|------|
+| `homelab` | `rpi5-8gb` (later `rpi5-4gb`) | `int.esselius.dev` |
+| `dev` | a local Colima VM | `dev.int.esselius.dev` |
+
+The zone is **flat**: a service has one name (`mosquitto.<zone>`) whichever host
+runs it, and clients never learn the host. Moving a workload between hosts is a
+change to `placement` (and its A record), never to the workloads. Guests read the
+derived `local.*` knobs (`domain`, `realm`, `dnsAddress`, ...) from
+`modules/local.nix`, so nothing hard-codes a domain or a `10.43` address. The
+Kanidm identity **realm** is separate from `domain`, so a dev Kanidm serves
+`idm.dev.int.esselius.dev` but still owns the restored `int.esselius.dev` users.
+
+The flake builds each guest for both envs: `nixosConfigurations.<name>` is the
+homelab, `<name>-dev` the local testbed (same modules, `env = "dev"`); terranix
+mirrors this (`<name>` and `<name>-dev`). `nix flake check` evaluates all of them.
 
 ## Networking
 
@@ -201,6 +217,53 @@ task check -- mosquitto            # evaluate one workload only (fast inner loop
 wrap `tf <name> <action>` (which builds `terraform/<name>/default.nix` into
 `config.tf.json` and runs OpenTofu there); `deploy` wraps `nixos-rebuild`. The
 raw terranix apps (`nix run .#example`, `.#example.destroy`) still work too.
+
+## Dev testbed (macOS)
+
+The `dev` env runs the same workloads in a local incus VM, browsable at
+`https://<service>.dev.int.esselius.dev` like the homelab. The whole path is
+automated (dev guests decrypt the committed secrets with the Mac's age key - see
+below):
+
+```fish
+task dev-bootstrap        # dev incus bridge + profiles (once)
+task dev-access-up        # map *.dev.int.esselius.dev -> the dev VM
+task dev-access-status    # mapping + lookup + ingress reachability
+task dev-access-down      # remove the mapping
+ENV=dev task up     -- <name>   # create on the dev VM
+ENV=dev task deploy -- <name>   # deploy over ProxyJump (no host route)
+```
+
+**No host route.** Routing the Mac into the dev subnet breaks its default route -
+macOS/vmnet (`bridge100`) interacting with the WireGuard tunnel (apple/container
+#1881) - so nothing touches the Mac's routing table. Instead everything hops
+through the VM, which the Mac already reaches at `colima status --json .ip_address`:
+
+- an `edge` workload (dev-only) is a TLS **SNI passthrough**: it reads the
+  ClientHello's server name and forwards the still-encrypted stream to the guest
+  that owns it, so guests keep presenting their own step-ca certs (end-to-end
+  TLS, no wildcard);
+- the `edge` instance carries a `proxy` device publishing it on the VM's own
+  address (`0.0.0.0:443`), which the Mac reaches with no route;
+- `dev-access-up` maps the dev names to that address in a managed `/etc/hosts`
+  block (no DNS daemon; `dev-access-down` removes it);
+- `ENV=dev task deploy` copies the closure and activates over SSH **jumped
+  through the VM** (`colima ssh-config`), so the guest subnet is never routed
+  from the Mac.
+
+**Trust.** The dev step-ca reuses the *production* intermediate
+(`certs/intermediate_ca.crt` plus the key/password in `secrets/step-ca.yaml`), so
+dev certs chain to the Esselius root the Mac already trusts - no keychain import
+and no browser warning. Trade-off: the dev CA is a clone able to mint
+production-trusted certificates; it exists only in the local VM.
+
+**Secrets.** Dev guests are not re-keyed: `modules/sops-env.nix` points sops at
+`/etc/nix-workloads/dev-age.key`, and `ENV=dev task deploy` pushes the Mac's own
+age identity (derived from `~/.ssh/id_ed25519`) there before activating. So the
+committed `secrets/*.yaml` decrypt unchanged; the homelab keeps per-guest host
+keys. The Mac's key only ever lives in this ephemeral local VM.
+
+These tasks are macOS-only; on other platforms they warn and no-op.
 
 ## Deploy (first boot)
 

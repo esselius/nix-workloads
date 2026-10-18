@@ -77,8 +77,8 @@
 
       # Both are mandatory in production: they pin the Host header and the
       # endpoint advertised in cache-config responses.
-      allowed-hosts = [ "cache.int.esselius.dev" ];
-      api-endpoint = "https://cache.int.esselius.dev/";
+      allowed-hosts = [ "cache.${config.local.domain}" ];
+      api-endpoint = "https://cache.${config.local.domain}/";
 
       # sqlite + local storage both live under StateDirectory (/var/lib/atticd).
       database.url = "sqlite:///var/lib/atticd/server.db?mode=rwc";
@@ -130,14 +130,14 @@
     acceptTerms = true;
     defaults = {
       email = "acme@esselius.dev";
-      server = "https://step-ca.int.esselius.dev:8443/acme/internal/directory";
+      server = "https://step-ca.${config.local.domain}:8443/acme/internal/directory";
     };
   };
 
   services.nginx = {
     enable = true;
     recommendedProxySettings = true;
-    virtualHosts."cache.int.esselius.dev" = {
+    virtualHosts."cache.${config.local.domain}" = {
       enableACME = true;
       forceSSL = true;
       locations."/" = {

@@ -1,21 +1,48 @@
 {
   lib,
   config,
+  env ? "homelab",
   ...
 }:
 let
   inherit (lib) mkOption types;
+  inv = import ../inventory.nix;
+  envCfg = inv.envs.${env};
+  zone = envCfg.zone;
 in
 {
-  # Shared, profile-selectable knobs. Defaults describe the homelab (the Pi
-  # hosts); a local env (e.g. an incus VM on the Mac) can override them by
-  # setting `local.*` in its own module. Guests read these instead of
-  # hard-coding `int.esselius.dev` / the Esselius CA / the Attic cache.
+  # Shared, env-selectable knobs. Defaults come from `inventory.nix` for the
+  # active `env` (homelab = the Pi; dev = a local incus VM), so a guest reads
+  # `config.local.*` and never hard-codes a domain, CA, cache or LAN detail.
+  # The `env` is supplied by the flake (`nixosConfigurations.<name>` is the
+  # homelab; `<name>-dev` is the local testbed).
   options.local = {
+    env = mkOption {
+      type = types.str;
+      default = env;
+      description = "Environment this system is built for (key into inventory.nix).";
+    };
+
     domain = mkOption {
       type = types.str;
-      default = "int.esselius.dev";
+      default = zone;
       description = "DNS suffix for workload hostnames (vhosts, coredns zone, ACME SANs).";
+    };
+
+    # The identity realm is deliberately separate from `domain`: a dev Kanidm
+    # serves `idm.<dev zone>` but still owns the production `int.esselius.dev`
+    # identities that were restored from backup.
+    realm = mkOption {
+      type = types.str;
+      default = envCfg.realm;
+      description = "Identity realm (Kanidm managed domain, user suffixes).";
+    };
+
+    # The env's internal resolver, used to advertise DNS to guests.
+    dnsAddress = mkOption {
+      type = types.str;
+      default = inv.ipFor env "coredns";
+      description = "Internal coredns address for the env.";
     };
 
     caFiles = mkOption {
@@ -26,7 +53,7 @@ in
 
     acmeServer = mkOption {
       type = types.str;
-      default = "https://step-ca.int.esselius.dev:8443/acme/internal/directory";
+      default = "https://step-ca.${zone}:8443/acme/internal/directory";
       description = "ACME directory guests issue their TLS certs from.";
     };
 
@@ -50,7 +77,9 @@ in
     cache = {
       url = mkOption {
         type = types.str;
-        default = "https://cache.int.esselius.dev/homelab";
+        # Only the homelab has an Attic cache; `dev` copies closures instead.
+        default = if env == "homelab" then "https://cache.${zone}/homelab" else "";
+        description = "Attic substituter URL (\"\" = no cache).";
       };
       publicKey = mkOption {
         type = types.str;
@@ -58,11 +87,12 @@ in
       };
     };
 
-    # The macvlan `eth1` LAN NIC some workloads carry.
+    # The macvlan `eth1` LAN NIC some workloads carry. Absent in `dev` (no
+    # physical LAN uplink inside the VM).
     lan = {
       enable = mkOption {
         type = types.bool;
-        default = true;
+        default = env == "homelab";
       };
       address = mkOption {
         type = types.str;

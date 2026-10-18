@@ -13,7 +13,9 @@ in
   # public key is set once via `attic cache info homelab` after the cache is
   # created (README "One-time bootstrap").
   nix.settings = {
-    extra-substituters = [ cfg.url ];
-    extra-trusted-public-keys = lib.optional (cfg.publicKey != "") cfg.publicKey;
+    # `dev` has no Attic (url = ""), so it substitutes from cache.nixos.org and
+    # copies everything else from the builder.
+    extra-substituters = lib.optional (cfg.url != "") cfg.url;
+    extra-trusted-public-keys = lib.optional (cfg.publicKey != "" && cfg.url != "") cfg.publicKey;
   };
 }

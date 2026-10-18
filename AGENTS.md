@@ -19,11 +19,26 @@ down.
      profiles, resource limits, devices.
   3. **OS** - `guests/<name>/default.nix`, a `nixosConfigurations.<name>` system
      deployed into the running instance with `nixos-rebuild`.
-- **Shared knobs.** `modules/local.nix` holds the shared, overridable knobs
-  (domain, CA, ACME, cache, LAN) with Pi defaults. Guests must read
-  `config.local.*`, never hard-code `int.esselius.dev` / the Esselius CA / the
-  Attic URL, so a different environment (e.g. a local incus VM on the Mac) is a
-  matter of setting those options rather than forking the configs.
+- **Environments + inventory.** `inventory.nix` is the single source of truth for
+  *where* each workload runs and is addressed: an *env* is one DNS zone + address
+  space (`homelab` = the Pi, `dev` = a local incus VM), hosts are incus servers,
+  and `placement` maps a service to a host. The zone is **flat** - a service has
+  one name (`mosquitto.<zone>`) whichever host runs it - so moving a workload is
+  a `placement` change, never a workload change. Never hard-code a domain or a
+  `10.43` address in a guest or a `terraform/<name>`: read `config.local.*`
+  (`domain`, `realm`, `dnsAddress`, ...) from `modules/local.nix` / the env's
+  host, and add new services to `inventory.nix`. The flake builds each guest for
+  both envs (`<name>` and `<name>-dev`; same for terranix).
+- **Dev testbed is macOS-only, route-free, and reuses the production CA.**
+  Never route the Mac into the dev subnet: macOS/vmnet `bridge100` plus the
+  WireGuard tunnel breaks the host's default route (apple/container #1881). The
+  `dev` `edge` workload SNI-passes TLS through to the guests and is published on
+  the VM's own address via a `proxy` device; `task dev-access-up/-down/-status`
+  (Darwin-only) map `*.dev.int.esselius.dev` to that address in a managed
+  `/etc/hosts` block; `ENV=dev task deploy` jumps SSH through the VM. The dev
+  step-ca reuses the *production* intermediate (`certs/intermediate_ca.crt` +
+  `secrets/step-ca.yaml`), so dev certs chain to the already-trusted Esselius
+  root; the trade-off is a local CA clone that can mint production-trusted certs.
 - Prefer small, explicit modules over abstractions. `terraform/common.nix` holds
   the only shared terranix config (the incus provider + remote); every workload
   is a sibling directory under `terraform/`.

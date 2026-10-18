@@ -104,7 +104,7 @@
   # above (`{{HOMEPAGE_VAR_...}}`).
   services.homepage-dashboard = {
     enable = true;
-    allowedHosts = "homepage.int.esselius.dev";
+    allowedHosts = "homepage.${config.local.domain}";
     # The module's default port is 8082; pin 3000 to match the oauth2-proxy
     # upstream below.
     listenPort = 3000;
@@ -257,17 +257,17 @@
     acceptTerms = true;
     defaults = {
       email = "acme@esselius.dev";
-      server = "https://step-ca.int.esselius.dev:8443/acme/internal/directory";
+      server = "https://step-ca.${config.local.domain}:8443/acme/internal/directory";
     };
   };
 
   services.oauth2-proxy = {
     enable = true;
     provider = "oidc";
-    oidcIssuerUrl = "https://idm.int.esselius.dev/oauth2/openid/homepage";
+    oidcIssuerUrl = "https://idm.${config.local.domain}/oauth2/openid/homepage";
     clientID = "homepage";
     email.domains = [ "*" ];
-    redirectURL = "https://homepage.int.esselius.dev/oauth2/callback";
+    redirectURL = "https://homepage.${config.local.domain}/oauth2/callback";
     upstream = [ "http://127.0.0.1:3000" ];
     reverseProxy = true;
     setXauthrequest = true;
@@ -280,7 +280,7 @@
   services.nginx = {
     enable = true;
     recommendedProxySettings = true;
-    virtualHosts."homepage.int.esselius.dev" = {
+    virtualHosts."homepage.${config.local.domain}" = {
       enableACME = true;
       forceSSL = true;
       locations."/" = {
