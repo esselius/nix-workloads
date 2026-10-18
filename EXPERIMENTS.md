@@ -34,6 +34,21 @@ at least 24 h (use 1–2 h only for quick signal checks).
 - E3: monitoring swap use ~165 MiB, no `swap_events_*`; neutral so far.
 - Next: let E1/E2 close out, then retry E4/E3 in isolation, then E7.
 
+### Check-in 2026-10-18 17:19 UTC
+
+- 11/11 running, 0 failed, load 0.52, `MemAvailable` ~4.15 GiB.
+- Refaults: total 4.65/s now, 4 h average 30.3/s, max 143.7/s.
+- Refault distribution shifted to the untouched/trimmed set: coredns 1.74/s,
+  backup 0.75, homepage 0.74, attic 0.70, kanidm 0.42, step-ca 0.26;
+  monitoring, home-assistant, zigbee2mqtt and mosquitto are now **0**.
+- E1 looks effective for monitoring (refaults 0 at 986/1536 MiB).
+- E2-trimmed instances show small refaults (kanidm 294/320, homepage 283/384,
+  node-red 330/384, attic 199/384); watch before concluding.
+- coredns is tight and was not tuned: 304/320 MiB with 1.74 refault/s — a
+  candidate for the next cache raise.
+- OOM 0; PSI memory full ~0, PSI io full ~0.67 %; NVMe wear 3 %, spare 100 %;
+  btrfs 19.09 GiB; 24 h max/swap-cap counters unchanged.
+
 ## Non-structural set
 
 These keep the current 11-instance layout and do not replace or merge
