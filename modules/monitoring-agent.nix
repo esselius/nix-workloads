@@ -52,8 +52,8 @@ in
     # overrides when Alloy is enabled; otherwise an empty unit would be created.
     systemd.services.alloy = lib.mkIf (cfg.enable && cfg.mode == "alloy") {
       environment = {
-        GOMEMLIMIT = "64MiB";
-        GOGC = "50";
+        GOMEMLIMIT = "192MiB";
+        GOGC = "100";
       };
     };
 

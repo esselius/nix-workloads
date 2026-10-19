@@ -208,6 +208,12 @@ and re-read, so the cache is smaller than the working set.
 - Caveats: Vector `since_now=true` means entries during a Vector restart are
   skipped; journal files cleaned after 7 days; node_exporter runs as root;
   central scrape config is static per deploy.
+- **CPU regression fixed:** monitoring Alloy was pinned at ~88% of one core
+  with the aggressive `GOMEMLIMIT=64MiB`/`GOGC=50`; raising to
+  `GOMEMLIMIT=192MiB`/`GOGC=100` dropped it to ~1% of one core while it runs
+  the central scrapes. Also fixed two generated-config commas (`__metrics_path__`
+  field and app target) that made reload fail; z2m's mqtt-exporter was rebound
+  from `127.0.0.1` to `0.0.0.0:9000`.
 
 **Option B — `node_exporter` + lightweight log shipper (recommended)**
 

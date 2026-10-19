@@ -57,8 +57,8 @@ let
           prometheus.scrape "${id}_app" {
             targets    = [
               {
-                __address__      = "${ip}:${toString a.port}"
-                __metrics_path__ = "${a.path or "/metrics"}"
+                __address__      = "${ip}:${toString a.port}",
+                __metrics_path__ = "${a.path or "/metrics"}",
               },
             ]
             job_name   = "${a.job}"

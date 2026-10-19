@@ -224,7 +224,7 @@
         # own topic as `mqtt_zigbee_availability` instead of a second topic per
         # device (legacy payloads are already off in the z2m settings above).
         "ZIGBEE2MQTT_AVAILABILITY=True"
-        "PROMETHEUS_ADDRESS=127.0.0.1"
+        "PROMETHEUS_ADDRESS=0.0.0.0"
         "PROMETHEUS_PORT=9000"
         # Every numeric field of every device becomes a series; cap the count so
         # a misbehaving payload can't take down the exporter.
