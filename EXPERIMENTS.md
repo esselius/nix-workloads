@@ -111,6 +111,9 @@ and re-read, so the cache is smaller than the working set.
 - **Guardrail:** `oom_kill`, `swap_events_fail`, PSI memory/io, NVMe write rate
   stay flat; host `MemAvailable` stays > ~1 GiB.
 - **Rollback:** revert the `memory` table in `inventory.nix`.
+- **Follow-up 2026-10-19:** monitoring `1792→2048MiB` and kanidm
+  `320→384MiB` after monitoring showed 3.9 refault/s with 432 MiB
+  `active_file`, and kanidm 0.76 refault/s with 27 `memory.max` events/h.
 
 ### E2 — Reclaim cold cache from the quiet instances
 

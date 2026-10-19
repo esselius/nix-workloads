@@ -147,12 +147,12 @@ let
       oomPriority = "-300";
     };
     monitoring = {
-      limit = "1792MiB";
+      limit = "2048MiB";
       swap = "256MiB";
       oomPriority = "100";
     };
     kanidm = {
-      limit = "320MiB";
+      limit = "384MiB";
       swap = "128MiB";
       oomPriority = "-200";
     };
