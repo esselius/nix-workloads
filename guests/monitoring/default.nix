@@ -1011,8 +1011,17 @@ in
 
   environment.etc."alloy/centralized.alloy".text = centralScrapes;
 
+  # Loki is the durable log store; the local journal only needs to buffer
+  # between Alloy reads. The remote journal spool below is also tmpfs: it is a
+  # hand-off to Vector, not an archive, and keeping both on NVMe only caused
+  # journald rewrite amplification.
+  services.journald = {
+    storage = "volatile";
+    extraConfig = "RuntimeMaxUse=64M";
+  };
+
   systemd.tmpfiles.rules = [
-    "d /var/lib/monitoring/journal-remote 0755 root root -"
+    "d /run/journal-remote 0755 root root -"
     "d /var/lib/monitoring/vector 0755 root root -"
   ];
 
@@ -1021,8 +1030,7 @@ in
     wantedBy = [ "multi-user.target" ];
     after = [ "systemd-tmpfiles-setup.service" ];
     serviceConfig = {
-      ExecStart = "${config.systemd.package}/lib/systemd/systemd-journal-remote --listen-http=0.0.0.0:19532 --output=/var/lib/monitoring/journal-remote --split-mode=host";
-      ExecStartPre = "-${pkgs.e2fsprogs}/bin/chattr +C /var/lib/monitoring/journal-remote";
+      ExecStart = "${config.systemd.package}/lib/systemd/systemd-journal-remote --listen-http=0.0.0.0:19532 --output=/run/journal-remote/remote.journal --split-mode=none --compress=yes";
       UMask = "0022";
       Restart = "on-failure";
       RestartSec = "5s";
@@ -1031,11 +1039,11 @@ in
   };
 
   systemd.services.journal-remote-cleanup = {
-    description = "Delete uploaded journals older than 7 days";
-    startAt = "daily";
+    description = "Delete uploaded journals older than 24 hours (tmpfs spool)";
+    startAt = "hourly";
     serviceConfig.Type = "oneshot";
     script = ''
-      ${pkgs.findutils}/bin/find /var/lib/monitoring/journal-remote -type f -name '*.journal' -mtime +7 -delete
+      ${pkgs.findutils}/bin/find /run/journal-remote -type f -name '*.journal*' -mmin +1440 -delete
     '';
   };
 
@@ -1047,7 +1055,7 @@ in
       data_dir = "/var/lib/monitoring/vector";
       sources.remote_journal = {
         type = "journald";
-        journal_directory = "/var/lib/monitoring/journal-remote";
+        journal_directory = "/run/journal-remote";
         current_boot_only = false;
         since_now = true;
       };

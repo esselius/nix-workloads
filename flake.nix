@@ -342,6 +342,21 @@
               }) allAttrs
             );
 
+            # systemd-journal-remote rejects SplitMode=none unless --output is
+            # a file (not a directory). Keep that semantic check close to the
+            # service definition so a typo cannot repeat the failed deploy.
+            journal-remote-args =
+              let
+                exec =
+                  self.nixosConfigurations.monitoring.config.systemd.services.journal-remote.serviceConfig.ExecStart;
+              in
+              if
+                lib.hasInfix "--split-mode=none" exec && lib.match ".*--output=[^ ]*\\.journal( |$).*" exec == null
+              then
+                throw "journal-remote: --split-mode=none requires --output=FILE"
+              else
+                pkgs.runCommand "journal-remote-args" { } "touch $out";
+
             # Formatting gate, matching `nix fmt`.
             fmt =
               pkgs.runCommand "fmt-check"
