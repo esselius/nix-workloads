@@ -7,8 +7,8 @@
 #     service to a host.
 #
 # Workloads never learn which host runs a dependency: they reference names
-# (`mosquitto.${config.local.domain}`) and coredns resolves them to wherever the
-# service is placed. Moving a service between hosts is therefore a change to
+# (`mosquitto.${config.local.domain}`) and the host DNS zone resolves them to
+# wherever the service is placed. Moving a service between hosts is therefore a change to
 # `placement` (and its A record), never to the workloads themselves.
 #
 # An env's `zone` is a *flat* namespace: there is no per-host suffix. Two hosts
@@ -26,6 +26,9 @@ let
           subnet = "10.43.0";
           bridge = "incusbr-vpn";
           pool = "default";
+          # Host-level Unbound resolver (modules/dns.nix in nix-homelab-hosts).
+          # It listens on the WireGuard address, not the Incus bridge.
+          dnsAddress = "10.6.0.3";
         };
         # Bring rpi5-4gb online by adding a host here with its own subnet, then
         # setting `placement` entries below. Same zone, same service names.
@@ -82,13 +85,6 @@ let
       ip = 13;
       dns = [ "idm" ];
       https = true;
-    };
-    coredns = {
-      ip = 14;
-      dns = [
-        "coredns"
-        "ns1"
-      ];
     };
     step-ca = {
       ip = 15;
@@ -156,11 +152,6 @@ let
       swap = "128MiB";
       oomPriority = "-200";
     };
-    coredns = {
-      limit = "320MiB";
-      swap = "64MiB";
-      oomPriority = "-200";
-    };
     step-ca = {
       limit = "512MiB";
       swap = "128MiB";
@@ -208,9 +199,6 @@ let
       node = true;
     };
     backup = {
-      node = true;
-    };
-    coredns = {
       node = true;
     };
     homepage = {

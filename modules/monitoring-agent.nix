@@ -35,7 +35,7 @@ in
       description = ''
         Monitoring workload (VictoriaMetrics + Loki) host, resolved via the
         internal split DNS. Using the name (not the pinned 10.43.0.12) means
-        moving the workload only needs the coredns zone updated.
+        moving the workload only needs the network zone updated.
       '';
     };
   };

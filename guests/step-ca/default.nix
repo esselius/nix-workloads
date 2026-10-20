@@ -100,7 +100,7 @@
       crt = "/etc/step-ca/intermediate_ca.crt";
       key = config.sops.secrets.intermediate_ca_key.path;
 
-      # SAN on step-ca's own TLS cert; must match the coredns zone record.
+      # SAN on step-ca's own TLS cert; must match the network zone record.
       dnsNames = [ "step-ca.${config.local.domain}" ];
 
       db = {

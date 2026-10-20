@@ -1,7 +1,7 @@
 { lib, config, ... }:
 let
   # OIDC identity provider (WebAuthn/passkeys). Pinned on the vpn bridge;
-  # reached by name (`idm.int.esselius.dev`, an A record in the coredns zone).
+  # reached by name (`idm.int.esselius.dev`, an A record in the network zone).
   inv = import ../../inventory.nix;
   staticIp = inv.ipFor config.local.env "kanidm";
   mem = inv.memory.kanidm;

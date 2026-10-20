@@ -2,7 +2,7 @@
 let
   # Self-hosted Attic binary cache: the shared substituter the Mac's linux-builder
   # pushes to and every host/guest pulls from. Pinned on the vpn bridge; reached
-  # as `cache.int.esselius.dev` (an A record in the coredns zone).
+  # as `cache.int.esselius.dev` (an A record in the network zone).
   inv = import ../../inventory.nix;
   staticIp = inv.ipFor config.local.env "attic";
   mem = inv.memory.attic;

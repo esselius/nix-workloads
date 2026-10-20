@@ -1,7 +1,7 @@
 { lib, config, ... }:
 let
   # Internal ACME certificate authority. Pinned on the vpn bridge; clients reach
-  # it by name (`step-ca.int.esselius.dev`, an A record in the coredns zone) and
+  # it by name (`step-ca.int.esselius.dev`, an A record in the network zone) and
   # trust the Esselius Root CA, so the issued certs are already trusted.
   inv = import ../../inventory.nix;
   staticIp = inv.ipFor config.local.env "step-ca";

@@ -1,7 +1,7 @@
 { lib, config, ... }:
 let
   # Landing page for the homelab. Pinned on the vpn bridge; reached as
-  # `homepage.int.esselius.dev` (an A record in the coredns zone), gated by
+  # `homepage.int.esselius.dev` (an A record in the network zone), gated by
   # oauth2-proxy -> Kanidm like the other web UIs.
   inv = import ../../inventory.nix;
   staticIp = inv.ipFor config.local.env "homepage";

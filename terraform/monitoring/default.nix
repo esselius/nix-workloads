@@ -2,7 +2,7 @@
 let
   # Metrics + logs + dashboards. Pinned on the vpn bridge; Alloy agents on the
   # hosts and guests push here, and Grafana is reached by name
-  # (`monitoring.int.esselius.dev`, an A record in the coredns zone).
+  # (`monitoring.int.esselius.dev`, an A record in the network zone).
   inv = import ../../inventory.nix;
   staticIp = inv.ipFor config.local.env "monitoring";
   mem = inv.memory.monitoring;

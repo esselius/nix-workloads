@@ -16,6 +16,11 @@ at least 24 h (use 1–2 h only for quick signal checks).
 | E8 | complete | duperemove dedup on container rootfs `/nix/store`: btrfs used 23.81 GiB → 19.15 GiB (~4.66 GiB); not reversible |
 | E6, E9 | structural | deferred |
 
+> 2026-10-19: DNS moved out of the workload fleet. Incus now serves the
+> `int.esselius.dev` network zone over AXFR; the host-level Unbound resolver is
+> the VPN client resolver, and the `coredns` workload was removed (10 instances).
+> The E1/E2 window predates that change; treat its cache conclusions separately.
+
 ### Check-in 2026-10-18 16:54 UTC
 
 - All 11 instances running, 0 failed units, host load 0.30, `MemAvailable`

@@ -1,7 +1,7 @@
 { lib, config, ... }:
 let
   # Restic REST server every guest pushes its state backups to. Pinned on the
-  # vpn bridge; reached as `backup.int.esselius.dev` (an A record in the coredns
+  # vpn bridge; reached as `backup.int.esselius.dev` (an A record in the network
   # zone). Plain HTTP on the WireGuard-private backplane (as with MQTT) - restic
   # encrypts the repo client-side, so the transport only needs the private wire.
   inv = import ../../inventory.nix;

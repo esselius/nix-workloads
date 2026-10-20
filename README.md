@@ -98,23 +98,24 @@ Caveats: the host cannot reach a macvlan address (use `eth0`), and the guest
 must not install a second default route - give `eth1` no gateway so only the
 connected LAN route is added.
 
-**Internal DNS (`int.esselius.dev`).** A `coredns` workload (`10.43.0.14`) is
-authoritative for `int.esselius.dev` - a zone generated in
-`guests/coredns/default.nix` that gives every workload an `A` record and
-non-HTTP services an `SRV` record (`_mqtt._tcp`, ...). It binds `:53` with
-`systemd-resolved` disabled in the guest (its stub would otherwise occupy the
-port).
+**Internal DNS (`int.esselius.dev`).** Incus's built-in DNS serves the network
+zone for `incusbr-vpn`; the zone and its custom records are managed by
+`terraform/dns` from `inventory.nix`. Incus only answers AXFR, so a host-level
+Unbound resolver in `nix-homelab-hosts` (`modules/dns.nix`) is the actual
+authoritative secondary and the VPN client resolver. It listens on the host's
+WireGuard address (`10.6.0.3` on `rpi5-8gb`), serves the AXFR zone from a
+persistent zonefile, and recurses to public resolvers for everything else.
+`cache`/`monitoring` and the `_mqtt._tcp` SRV record are static Unbound records
+because the Incus provider supports only A/AAAA/CNAME/TXT custom entries.
 
 The zone is **internal-only** and deliberately **not** delegated from the public
 `esselius.dev` zone: a delegation whose authority is a private address cannot be
 followed by a public/forwarding resolver (it answers `REFUSED` /
-`No Reachable Authority`). Instead the hosts use **split DNS** - a
-systemd-resolved routing domain `~int.esselius.dev` -> `10.43.0.14`, registered
-on the `incusbr-vpn` bridge link via `local.incus.network.vpn.dns`/`dnsDomains`
-in `nix-homelab-hosts`. Only that suffix goes to `coredns`; every other lookup
-stays direct. The router is untouched (the stock RT-BE50 cannot do conditional
-forwarding) and there are no GoDaddy records for the zone. Consequences:
-`int.esselius.dev` resolves only while on the VPN.
+`No Reachable Authority`). The router is untouched (the stock RT-BE50 cannot do
+conditional forwarding) and there are no GoDaddy records for the zone.
+Consequences: `int.esselius.dev` resolves only while on the VPN. Unbound keeps
+serving the last transferred zone if Incus or CoreDNS is unavailable, and internet
+resolution does not depend on either.
 
 **Credentials shim.** LXC's distrobuilder generator writes
 `service.d/zzz-lxc-service.conf`, clearing `LoadCredential=`/`ImportCredential=`
@@ -286,7 +287,7 @@ build inside it anyway), so it can *only* substitute - a cache miss is a hard
 error, never a builder -> target copy. Run `task cache-push -- <name>` first.
 `nixos-rebuild switch` then switches, with the copy step transferring nothing.
 
-The exception is the bootstrap roots (`attic`, `step-ca`, `coredns`): `attic` is
+The exception is the bootstrap roots (`attic`, `step-ca`): `attic` is
 the cache itself, and the roots are deployed before it exists, so those may fall
 back to a copy on a cache miss. Every other workload refuses to.
 
@@ -329,7 +330,7 @@ builder ──build──▶ task cache-push ──▶ cache ──substitute─
   closure from the cache *before* switching, so the closure travels cache ->
   target and the Mac's uplink is out of the path. A path the cache cannot serve
   aborts the deploy - it is never copied from the builder. (The bootstrap roots
-  `attic`/`step-ca`/`coredns` are the only exception; see Deploy.)
+  `attic`/`step-ca` are the only exception; see Deploy.)
 - **Trust.** The cache is HTTPS with a step-ca cert, so every guest trusts the
   internal CA through `modules/nix-cache.nix`, and `task onboard` seeds the same
   trust into the stock base image so the first switch substitutes too. `deploy`

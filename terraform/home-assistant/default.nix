@@ -2,7 +2,7 @@
 let
   # Home Assistant (migrated off adama). Recorder backed by a co-located
   # PostgreSQL (see guests/home-assistant). Pinned on the vpn bridge; reached as
-  # `home-assistant.int.esselius.dev` (an A record in the coredns zone).
+  # `home-assistant.int.esselius.dev` (an A record in the network zone).
   inv = import ../../inventory.nix;
   staticIp = inv.ipFor config.local.env "home-assistant";
   mem = inv.memory.home-assistant;

@@ -74,9 +74,6 @@
         example = {
           sops = false;
         };
-        coredns = {
-          sops = false;
-        };
         # Dev-only TLS SNI ingress; no secrets.
         edge = {
           sops = false;
@@ -97,6 +94,10 @@
       # homelab rollout.
       devAttrs = map (name: "${name}-dev") workloads;
       allAttrs = workloads ++ devAttrs;
+
+      # The DNS zone is shared infrastructure, not a guest workload. It still
+      # uses the same terranix/tf wrapper, but has no nixosConfiguration.
+      tfWorkloads = workloads ++ [ "dns" ];
 
       # Environments for the `tf` wrapper / Taskfile: each maps to the guest
       # system's attr suffix, its terranix state dir, and its incus remote.
@@ -187,7 +188,7 @@
             text = ''
               if [ $# -lt 2 ]; then
                 echo "Usage: [ENV=<env>] tf <name> <init|plan|apply|destroy> [tofu args...]"
-                echo "Workloads: ${lib.concatStringsSep " " workloads}"
+                echo "Workloads: ${lib.concatStringsSep " " tfWorkloads}"
                 echo "Envs: ${lib.concatStringsSep " " (lib.attrNames inv.envs)}"
                 exit 1
               fi
@@ -266,7 +267,25 @@
                   ];
                 }
               ) workloads
-            );
+            )
+            // {
+              dns = {
+                terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+                modules = [
+                  ./terraform/common.nix
+                  ./terraform/envs/homelab.nix
+                  ./terraform/dns
+                ];
+              };
+              dns-dev = {
+                terraformWrapper.package = pkgs.opentofu.withPlugins (_: [ ]);
+                modules = [
+                  ./terraform/common.nix
+                  ./terraform/envs/dev.nix
+                  ./terraform/dns
+                ];
+              };
+            };
 
           devShells.default = pkgs.mkShell {
             packages = [

@@ -84,8 +84,8 @@ down.
   workload's system closure (never everything the builder compiles), and
   `task deploy` is substitution-only: it runs `nix-store --realise` on the
   target before switching, so a path the cache cannot serve fails the deploy
-  instead of being copied from the builder (`attic`/`step-ca`/`coredns` may
-  still copy - they bootstrap the cache). See README "Build cache (Attic)".
+  instead of being copied from the builder (`attic`/`step-ca` may still copy -
+  they bootstrap the cache). See README "Build cache (Attic)".
 - The USB Zigbee coordinator is physical, so a Zigbee2MQTT workload is pinned to
   the board the dongle is plugged into (never migrates with the instance). It can
   be a container: pass the host's `cdc_acm` node with a `unix-char` device

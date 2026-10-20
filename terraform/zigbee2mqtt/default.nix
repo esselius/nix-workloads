@@ -2,7 +2,7 @@
 let
   # Zigbee2MQTT (migrated off adama). Pinned to rpi5-8gb because the USB
   # coordinator is physical - the instance can never migrate with it. Reached as
-  # `zigbee2mqtt.int.esselius.dev` (an A record in the coredns zone).
+  # `zigbee2mqtt.int.esselius.dev` (an A record in the network zone).
   inv = import ../../inventory.nix;
   staticIp = inv.ipFor config.local.env "zigbee2mqtt";
   mem = inv.memory.zigbee2mqtt;

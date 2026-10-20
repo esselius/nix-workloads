@@ -1,7 +1,7 @@
 { lib, config, ... }:
 let
   # Node-RED (the smart-home automations, migrated off adama). Pinned on the vpn
-  # bridge; reached as `node-red.int.esselius.dev` (an A record in the coredns
+  # bridge; reached as `node-red.int.esselius.dev` (an A record in the network
   # zone).
   inv = import ../../inventory.nix;
   staticIp = inv.ipFor config.local.env "node-red";

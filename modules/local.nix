@@ -26,7 +26,7 @@ in
     domain = mkOption {
       type = types.str;
       default = zone;
-      description = "DNS suffix for workload hostnames (vhosts, coredns zone, ACME SANs).";
+      description = "DNS suffix for workload hostnames (vhosts, network zone, ACME SANs).";
     };
 
     # The identity realm is deliberately separate from `domain`: a dev Kanidm
@@ -41,8 +41,8 @@ in
     # The env's internal resolver, used to advertise DNS to guests.
     dnsAddress = mkOption {
       type = types.str;
-      default = inv.ipFor env "coredns";
-      description = "Internal coredns address for the env.";
+      default = envCfg.hosts.${envCfg.defaultHost}.dnsAddress or "127.0.0.1";
+      description = "Internal host Unbound address for the env.";
     };
 
     caFiles = mkOption {
