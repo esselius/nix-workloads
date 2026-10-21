@@ -111,8 +111,25 @@
             host = cfg.hosts.${cfg.defaultHost};
             suffix = if envName == defaultEnv then "" else "-${envName}";
             dir = if envName == defaultEnv then "terraform" else "terraform/${envName}";
+            serviceRemotes = lib.concatStringsSep "\n              " (
+              lib.mapAttrsToList (
+                svc: _:
+                let
+                  remote = cfg.hosts.${inv.hostFor envName svc}.remote;
+                in
+                ''${svc}) remote="${remote}" ;;''
+              ) inv.services
+            );
           in
-          ''${envName}) attr="$name${suffix}"; workdir="${dir}/$name"; remote="${host.remote}" ;;''
+          ''
+            ${envName})
+              attr="$name${suffix}"; workdir="${dir}/$name"
+              case "$name" in
+                ${serviceRemotes}
+                *) remote="${host.remote}" ;;
+              esac
+              ;;
+          ''
         ) inv.envs
       );
 
@@ -125,7 +142,7 @@
         nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
           specialArgs = (meta.specialArgs or { }) // {
-            inherit env;
+            inherit env name;
           };
           modules =
             lib.optionals (meta.sops or true) [
@@ -252,6 +269,9 @@
               modules = [
                 ./terraform/common.nix
                 ./terraform/envs/homelab.nix
+                {
+                  local.incus.defaultRemote = (inv.envs.homelab.hosts.${inv.hostFor "homelab" name}).remote;
+                }
                 ./terraform/${name}
               ];
             })
@@ -263,6 +283,9 @@
                   modules = [
                     ./terraform/common.nix
                     ./terraform/envs/dev.nix
+                    {
+                      local.incus.defaultRemote = (inv.envs.dev.hosts.${inv.hostFor "dev" name}).remote;
+                    }
                     ./terraform/${name}
                   ];
                 }
@@ -274,6 +297,9 @@
                 modules = [
                   ./terraform/common.nix
                   ./terraform/envs/homelab.nix
+                  {
+                    local.incus.defaultRemote = (inv.envs.homelab.hosts.${inv.hostFor "homelab" "dns"}).remote;
+                  }
                   ./terraform/dns
                 ];
               };
@@ -282,6 +308,9 @@
                 modules = [
                   ./terraform/common.nix
                   ./terraform/envs/dev.nix
+                  {
+                    local.incus.defaultRemote = (inv.envs.dev.hosts.${inv.hostFor "dev" "dns"}).remote;
+                  }
                   ./terraform/dns
                 ];
               };

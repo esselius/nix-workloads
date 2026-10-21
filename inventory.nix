@@ -20,6 +20,17 @@ let
       # Kanidm's identity realm, independent of where its URL lives.
       realm = "int.esselius.dev";
       defaultHost = "rpi5-8gb";
+      # The router's WireGuard address. It is the source of the syslog feed the
+      # monitoring workload accepts (and the only source the firewall allows).
+      routerAddress = "10.6.0.1";
+      # The router's web UI is only bound to its LAN address.
+      routerUi = "https://192.168.50.1:8443/";
+      # Browser URLs of the hosts' Incus web UIs (client-cert auth), keyed by
+      # host name. A host can publish its UI before it is added to `hosts`.
+      incusUis = {
+        rpi5-8gb = "https://rpi5-8gb.x.esselius.dev:8443/";
+        rpi5-4gb = "https://rpi5-4gb.x.esselius.dev:8443/";
+      };
       hosts = {
         rpi5-8gb = {
           remote = "rpi5-8gb";
@@ -30,11 +41,20 @@ let
           # It listens on the WireGuard address, not the Incus bridge.
           dnsAddress = "10.6.0.3";
         };
-        # Bring rpi5-4gb online by adding a host here with its own subnet, then
-        # setting `placement` entries below. Same zone, same service names.
-        #   rpi5-4gb = { remote = "rpi5-4gb"; subnet = "10.44.0"; bridge = "incusbr-vpn"; pool = "default"; };
+        rpi5-4gb = {
+          remote = "rpi5-4gb";
+          subnet = "10.43.1";
+          bridge = "incusbr-vpn";
+          pool = "default";
+          # Host-level Unbound resolver (see nix-homelab-hosts). Guests still
+          # use the env's default resolver unless per-host DNS is wired up.
+          dnsAddress = "10.6.0.5";
+        };
       };
-      placement = { };
+      placement = {
+        backup = "rpi5-4gb";
+        homepage = "rpi5-4gb";
+      };
     };
 
     dev = {
@@ -75,6 +95,9 @@ let
     mosquitto = {
       ip = 11;
       dns = [ "mosquitto" ];
+      # Static LAN address on the macvlan eth1 NIC (outside the router's DHCP
+      # pool, which ends at 192.168.50.100).
+      lan = "192.168.50.150/24";
     };
     monitoring = {
       ip = 12;
@@ -108,6 +131,8 @@ let
       ip = 19;
       dns = [ "home-assistant" ];
       https = true;
+      # Static LAN address for discovery of LAN devices (cast/homekit/zeroconf).
+      lan = "192.168.50.151/24";
     };
     attic = {
       ip = 20;

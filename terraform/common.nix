@@ -66,17 +66,16 @@ in
     local.lan.enable = lib.mkDefault (config.local.env == "homelab");
 
     local.incus.defaultRemote = lib.mkDefault host.remote;
-    # The homelab remote is declared inline (the Mac has no local incus daemon);
-    # `dev` uses whatever the local `colima` remote is configured to be.
+    # The homelab remotes are declared inline (the Mac has no local incus
+    # daemon); `dev` uses whatever the local `colima` remote is configured to
+    # be. Every host's UI URL is also its API endpoint.
     local.incus.remote = lib.mkDefault (
       if config.local.env == "homelab" then
-        [
-          {
-            name = "rpi5-8gb";
-            address = "https://rpi5-8gb.x.esselius.dev:8443";
-            authentication_type = "tls";
-          }
-        ]
+        lib.mapAttrsToList (name: url: {
+          inherit name;
+          address = lib.removeSuffix "/" url;
+          authentication_type = "tls";
+        }) (envCfg.incusUis or { })
       else
         [ ]
     );
