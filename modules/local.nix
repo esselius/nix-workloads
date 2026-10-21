@@ -2,6 +2,7 @@
   lib,
   config,
   env ? "homelab",
+  name ? null,
   ...
 }:
 let
@@ -38,11 +39,34 @@ in
       description = "Identity realm (Kanidm managed domain, user suffixes).";
     };
 
+    # The env router's WireGuard address, when it has one. Null in `dev`, where
+    # there is no router feeding syslog.
+    routerAddress = mkOption {
+      type = types.nullOr types.str;
+      default = envCfg.routerAddress or null;
+      description = "Router address allowed to send syslog to the monitoring workload.";
+    };
+
+    # Browser URL of the env router's web UI. Null in `dev`, which has no router.
+    routerUiUrl = mkOption {
+      type = types.nullOr types.str;
+      default = envCfg.routerUi or null;
+      description = "Browser URL of the router web UI (null = none).";
+    };
+
     # The env's internal resolver, used to advertise DNS to guests.
     dnsAddress = mkOption {
       type = types.str;
       default = envCfg.hosts.${envCfg.defaultHost}.dnsAddress or "127.0.0.1";
       description = "Internal host Unbound address for the env.";
+    };
+
+    # Browser URLs of the env's Incus web UIs, keyed by host name. Empty in
+    # `dev`, where the local VM's address is not stable.
+    incusUis = mkOption {
+      type = types.attrsOf types.str;
+      default = envCfg.incusUis or { };
+      description = "Browser URLs of the Incus web UIs, keyed by host name.";
     };
 
     caFiles = mkOption {
@@ -96,7 +120,12 @@ in
       };
       address = mkOption {
         type = types.str;
-        default = "192.168.50.150/24";
+        description = "Static address on the LAN NIC, from the service's inventory entry.";
+        default =
+          if name != null && inv.services ? ${name} && inv.services.${name} ? lan then
+            inv.services.${name}.lan
+          else
+            "192.168.50.150/24";
       };
     };
   };
