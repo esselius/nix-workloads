@@ -31,7 +31,7 @@ tasks:
         INCUS_REMOTE="$remote" incus file push --uid 0 --gid 0 --mode 600 ~/.ssh/id_ed25519.pub "$name/root/.ssh/authorized_keys" --create-dirs
 
   onboard:
-    desc: "Trust a guest's host key for sops, rekey its secret, and seed Attic cache trust. Usage: task onboard -- <name>"
+    desc: "Trust a guest's host key for sops and rekey its secret. Usage: task onboard -- <name>"
     cmds:
       - |
         set -e
@@ -78,29 +78,13 @@ tasks:
           printf 'y\n' | sops updatekeys "secrets/$name.yaml"
         fi
 
-        # Seed the base image with Attic trust so its first deploy can substitute.
-        substituter="$(nix eval --raw ".#nixosConfigurations.$name.config.nix.settings.extra-substituters" --apply 'builtins.concatStringsSep " "')"
-        cachekey="$(nix eval --raw ".#nixosConfigurations.$name.config.nix.settings.extra-trusted-public-keys" --apply 'builtins.concatStringsSep " "')"
-        incus file push --create-dirs --uid 0 --gid 0 --mode 644 certs/root_ca.crt "$name/etc/nix/internal-root-ca.crt"
-        incus exec "$name" -- sh -ec '
-          export PATH=/run/current-system/sw/bin:/run/wrappers/bin:$PATH
-          f=/etc/nix/nix.conf
-          if [ -L "$f" ]; then
-            target="$(readlink -f "$f")"
-            rm -f "$f"
-            cp "$target" "$f"
-          fi
-          bundle=/etc/ssl/certs/ca-certificates.crt
-          [ -e "$bundle" ] || bundle=/etc/ssl/certs/ca-bundle.crt
-          cat "$bundle" /etc/nix/internal-root-ca.crt > /etc/nix/ssl-cert-file.pem
-          if ! grep -q "nix-workloads cache seed" "$f"; then
-            printf "\n# nix-workloads cache seed\nextra-substituters = %s\nextra-trusted-public-keys = %s\nssl-cert-file = /etc/nix/ssl-cert-file.pem\n" "$1" "$2" >> "$f"
-          fi
-          systemctl restart nix-daemon
-        ' sh "$substituter" "$cachekey"
+        # The first deploy must copy the closure (COPY=1): the stock base image
+        # trusts no internal CA and does not know the cache. After that switch,
+        # modules/nix-cache.nix and modules/local.nix provide the CA and
+        # substituters declaratively; no /etc/nix patch is needed.
 
   deploy:
-    desc: "Deploy a guest's NixOS system. Usage: task deploy -- <name>"
+    desc: "Deploy a guest's NixOS system. Usage: task deploy -- <name> (COPY=1 for a guest's first deploy)"
     cmds:
       - |
         set -e
@@ -138,12 +122,14 @@ tasks:
               echo "bootstrap workload: a cache miss may copy"
               ;;
             *)
-              if ! ssh -o StrictHostKeyChecking=accept-new "root@$ip" \
+              if [ "${COPY:-0}" = 1 ]; then
+                echo "COPY=1: first deploy - copying the closure from the builder"
+              elif ! ssh -o StrictHostKeyChecking=accept-new "root@$ip" \
                 nix-store --realise "$system" \
                 --option download-attempts 1 --option connect-timeout 5 \
                 --option narinfo-cache-negative-ttl 0; then
                 echo "error: $name cannot substitute its closure from the cache." >&2
-                echo "       run 'task cache-push -- $name' first" >&2
+                echo "       run 'task cache-push -- $name' first, or COPY=1 for the first deploy" >&2
                 exit 1
               fi
               ;;
@@ -173,8 +159,43 @@ tasks:
           nixos-rebuild switch --flake ".#$attr" \
           --target-host "root@$ip" $use_subs
 
+        if ! scripts/verify-guest.sh "$env" "$name"; then
+          echo "deploy verification failed for $name" >&2
+          if [ "${AUTO_ROLLBACK:-0}" = 1 ]; then
+            echo "rolling $name back to the previous generation" >&2
+            task rollback -- "$name"
+          else
+            echo "run 'task rollback -- $name' to revert" >&2
+          fi
+          exit 1
+        fi
+
+  verify:
+    desc: "Smoke-test a guest's systemd state and main service. Usage: task verify -- <name>"
+    cmds:
+      - |
+        set -e
+        name="{{index .CLI_ARGS_LIST 0}}"
+        env="${ENV:-homelab}"
+        scripts/verify-guest.sh "$env" "$name"
+
+  rollback:
+    desc: "Roll a guest back to its previous generation and verify. Usage: task rollback -- <name>"
+    cmds:
+      - |
+        set -e
+        name="{{index .CLI_ARGS_LIST 0}}"
+        env="${ENV:-homelab}"
+        remote="$(scripts/remote-for.sh "$env" "$name")"
+        export INCUS_REMOTE="$remote"
+        incus exec "$name" -- sh -ec '
+          nix-env --rollback -p /nix/var/nix/profiles/system
+          /nix/var/nix/profiles/system/bin/switch-to-configuration switch
+        '
+        scripts/verify-guest.sh "$env" "$name"
+
   cache-push:
-    desc: "Push a workload's system closure to the Attic cache. Usage: task cache-push -- <name>"
+    desc: "Push a workload's system closure to Attic and Cachix. Usage: task cache-push -- <name>"
     cmds:
       - |
         name="{{index .CLI_ARGS_LIST 0}}"
@@ -189,8 +210,29 @@ tasks:
         cat "$base" certs/root_ca.crt > "$ca"
 
         system="$(nix build ".#nixosConfigurations.$name.config.system.build.toplevel" --no-link --print-out-paths --option ssl-cert-file "$ca" --option narinfo-cache-negative-ttl 0)"
-        echo "pushing $name ($system) to the cache"
-        attic push "${CACHE:-homelab}" "$system"
+        echo "pushing $name ($system)"
+
+        pushed=0
+        if [ "${PUSH_ATTIC:-1}" = 1 ]; then
+          if attic push "${CACHE:-homelab}" "$system"; then
+            pushed=1
+          else
+            echo "warning: Attic push failed (is the attic workload reachable?)" >&2
+          fi
+        fi
+        if [ "${PUSH_CACHIX:-1}" = 1 ]; then
+          if ! command -v cachix >/dev/null 2>&1; then
+            echo "warning: cachix not found (run inside the devshell)" >&2
+          elif cachix push "${CACHIX_CACHE:-esselius}" "$system"; then
+            pushed=1
+          else
+            echo "warning: Cachix push failed" >&2
+          fi
+        fi
+        if [ "$pushed" = 0 ]; then
+          echo "error: no cache accepted $name" >&2
+          exit 1
+        fi
 
   deploy-all:
     desc: "Apply DNS, then deploy every guest in dependency order. Usage: task deploy-all"
@@ -216,7 +258,7 @@ tasks:
         done
 
   provision-all:
-    desc: "Apply DNS, then up -> onboard -> cache-push -> deploy every guest except example/edge. Usage: task provision-all"
+    desc: "Apply DNS, then up -> onboard -> cache-push -> first deploy (COPY=1) every guest except example/edge. Usage: task provision-all"
     cmds:
       - |
         set -e
@@ -242,8 +284,8 @@ tasks:
             *" $name "*) echo "    bootstrap workload: skipping cache-push" ;;
             *) task cache-push -- "$name" ;;
           esac
-          echo "==> $name: deploy"
-          task deploy -- "$name"
+          echo "==> $name: deploy (first boot; COPY=1)"
+          COPY=1 task deploy -- "$name"
           echo "    $name: $(( $(date +%s) - start ))s"
         done
 

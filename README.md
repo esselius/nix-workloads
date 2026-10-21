@@ -163,14 +163,18 @@ boot - so onboarding a guest is two-phase:
 
 ```fish
 task up -- mosquitto               # 1. create the instance (layer 2)
-task onboard -- mosquitto          # 2. trust its host key for sops + seed cache trust
-task cache-push -- mosquitto       # 3. push its closure to the Attic cache
-task deploy -- mosquitto           # 4. deploy (substitutes from the cache)
+task onboard -- mosquitto          # 2. trust its host key for sops
+task cache-push -- mosquitto       # 3. push its closure to the caches
+COPY=1 task deploy -- mosquitto    # 4. first deploy copies the closure
+task deploy -- mosquitto           # 5. later deploys substitute from the cache
 ```
 
-`task onboard` reads the guest's host key over the network (`ssh-keyscan -t
-ed25519 <ip> | ssh-to-age`; the base image's sshd is already up), appends it to
-`.sops.yaml`, and runs `sops updatekeys secrets/<name>.yaml`.
+`task onboard` reads the guest's host key over the incus API, appends it to
+`.sops.yaml`, and runs `sops updatekeys secrets/<name>.yaml`. It no longer
+patches the base image: the first deploy uses `COPY=1` because the stock image
+trusts no internal CA and does not know the cache. The switch it performs then
+installs the CA and substituters declaratively (`modules/local.nix`,
+`modules/nix-cache.nix`), so every later deploy is substitution-only.
 
 Until step 2, `task deploy` fails: sops-nix on the guest cannot decrypt a file
 the guest is not a recipient of. Never commit plaintext secrets.
@@ -211,11 +215,14 @@ task up     -- example             # create/update it (tf apply)
 task down   -- example             # destroy it
 task up     -- dns                 # apply the guest-less network zone
 
-task onboard -- example            # trust host key for sops + seed cache trust
-task cache-push -- example         # push the guest's closure to the Attic cache
-task deploy -- example             # nixos-rebuild the guest onto it (see Deploy)
+task onboard -- example            # trust host key for sops
+task cache-push -- example         # push the guest's closure to Attic + Cachix
+COPY=1 task deploy -- example      # first deploy (copies the closure)
+task deploy -- example             # later deploys substitute from the cache
+task verify -- example             # systemd + main-service smoke test
+task rollback -- example           # previous NixOS generation + verify
 task deploy-all                    # apply DNS, then deploy every guest in order
-task provision-all                 # apply DNS, then up/onboard/cache-push/deploy every guest
+task provision-all                 # apply DNS, then up/onboard/cache-push/first-deploy every guest
 task fmt                           # nix fmt
 task check                         # nix flake check (every guest + DNS)
 task check -- mosquitto            # evaluate one workload only (fast inner loop)
@@ -292,23 +299,25 @@ the toplevel **locally on the Mac** (dispatched to its `aarch64-linux`
 `nix.linux-builder`, a remote in `/etc/nix/machines`), then hands it to the
 instance.
 
-Deploy is **substitution-only**: before switching it runs `nix-store --realise
-<toplevel>` on the target, so the target must pull the whole closure from its
-substituters (the Attic cache, see below). The guest sets `nix.settings.max-jobs
-= 0` (the unprivileged guest has no user namespaces, so Nix cannot sandbox a
-build inside it anyway), so it can *only* substitute - a cache miss is a hard
-error, never a builder -> target copy. Run `task cache-push -- <name>` first.
-`nixos-rebuild switch` then switches, with the copy step transferring nothing.
+Deploy is **substitution-only after the first boot**: before switching it runs
+`nix-store --realise <toplevel>` on the target, so the target must pull the whole
+closure from its substituters (Attic, then Cachix; see below). The guest sets
+`nix.settings.max-jobs = 0` (the unprivileged guest has no user namespaces, so
+Nix cannot sandbox a build inside it anyway), so it can *only* substitute - a
+cache miss is a hard error, never a builder -> target copy. Run
+`task cache-push -- <name>` first. `nixos-rebuild switch` then switches, with
+the copy step transferring nothing.
 
-The exception is the bootstrap roots (`attic`, `step-ca`): `attic` is
-the cache itself, and the roots are deployed before it exists, so those may fall
-back to a copy on a cache miss. Every other workload refuses to.
+The exceptions are the first deploy of any guest and the bootstrap roots
+(`attic`, `step-ca`): use `COPY=1 task deploy -- <name>` (the `provision-all`
+flow does this automatically) so the stock base image can receive the closure
+before it knows the internal CA. `onboard` no longer patches `/etc/nix/nix.conf`;
+after the first switch the CA/cache settings are declarative and later deploys
+refuse to copy on a cache miss.
 
-The stock `images:nixos/26.05` base image trusts no internal CA and does not know
-the cache, so `task onboard` also seeds it (a cert plus a few `/etc/nix/nix.conf`
-lines) - that is what lets the **first** deploy substitute rather than copy. A
-guest deployed *before* the CA fix (its running system cannot verify the cache)
-must be re-onboarded once - `task onboard -- <name>` - before a strict deploy.
+After switching, `task deploy` runs `scripts/verify-guest.sh` (instance running,
+systemd state, failed units, the workload's main unit). A failed verify fails the
+deploy; `AUTO_ROLLBACK=1` rolls back immediately, or run `task rollback -- <name>`.
 
 Off the VPN, add a ProxyJump for the guest. Do it in `~/.ssh/config` rather than
 in `NIX_SSHOPTS`:
@@ -323,32 +332,36 @@ The provisioner runs only on create; after the first switch the key is declared
 in `guests/example/default.nix`, so later rebuilds only need
 `task deploy -- <name>`.
 
-## Build cache (Attic)
+## Build cache (Attic + Cachix)
 
-The one place a build result can live so it is not rebuilt everywhere: the
-`attic` workload (`cache.int.esselius.dev`), a self-hosted Attic binary cache on
-a persistent volume. The Mac's `nix.linux-builder` is the only builder; the cache
-is how its results reach the hosts and guests.
+Two places a build result can live so it is not rebuilt everywhere: the `attic`
+workload (`cache.int.esselius.dev`), a self-hosted Attic binary cache on a
+persistent volume, and the external `esselius` Cachix cache as a fallback when
+Attic (itself a workload on the cluster) is down. The Mac's `nix.linux-builder`
+is the only builder; the caches are how its results reach the guests.
 
 ```
-builder ──build──▶ task cache-push ──▶ cache ──substitute──▶ target
+builder ──build──▶ task cache-push ──▶ Attic + Cachix ──substitute──▶ target
    Mac ── orchestrates ──┘
 ```
 
 - **Push only what you deploy.** `task cache-push -- <name>` pushes that
   workload's *system closure* (`attic push` walks references and skips paths
-  already on `cache.nixos.org`). The builder's intermediates stay on the builder,
-  so the cache holds distribution artifacts - not everything ever compiled.
+  already on `cache.nixos.org`; the same closure goes to Cachix). The builder's
+  intermediates stay on the builder, so the caches hold distribution artifacts -
+  not everything ever compiled. If one cache fails, the other still counts as
+  success; both failing is an error.
 - **Pull on the target, or fail.** `task deploy` makes the target realise the
-  closure from the cache *before* switching, so the closure travels cache ->
-  target and the Mac's uplink is out of the path. A path the cache cannot serve
-  aborts the deploy - it is never copied from the builder. (The bootstrap roots
-  `attic`/`step-ca` are the only exception; see Deploy.)
-- **Trust.** The cache is HTTPS with a step-ca cert, so every guest trusts the
-  internal CA through `modules/nix-cache.nix`, and `task onboard` seeds the same
-  trust into the stock base image so the first switch substitutes too. `deploy`
-  and `cache-push` build a CA bundle (the orchestrator's trust store plus
-  `certs/root_ca.crt`) and pass it to nix, so the orchestrator's own nix also
+  closure from its substituters *before* switching, so the closure travels
+  cache -> target and the Mac's uplink is out of the path. A path neither Attic
+  nor Cachix can serve aborts the deploy - it is never copied from the builder.
+  (The first deploy of a guest and the bootstrap roots `attic`/`step-ca` are the
+  exceptions; see Deploy.)
+- **Trust.** Attic is HTTPS with a step-ca cert, so guests trust the internal CA;
+  the Cachix public key is in `modules/nix-cache.nix` too. Both are declarative,
+  so no base-image patch is needed. `deploy` and `cache-push` build a CA bundle
+  (the orchestrator's trust store plus `certs/root_ca.crt`) and pass it to nix,
+  so the orchestrator's own nix also
   substitutes from the cache instead of rebuilding locally.
 
 ### One-time bootstrap
@@ -357,7 +370,8 @@ Attic's cache signing key is generated when the cache is *created*, so the
 clients' `trusted-public-keys` can only be filled in afterwards:
 
 1. `task up -- attic`, `task onboard -- attic` (adds the guest's host key to
-   `.sops.yaml` and rekeys `secrets/attic.yaml`), then `task deploy -- attic`.
+   `.sops.yaml` and rekeys `secrets/attic.yaml`), then
+   `COPY=1 task deploy -- attic`.
 2. Mint an access token on the server. `atticd-atticadm` is the module's
    `atticadm` wrapper (run it in the guest); `--create-cache` is what lets the
    token create `homelab`, `--pull`/`--push` grant access to it:
@@ -427,8 +441,8 @@ paths stay hot.
    register: both `nixosConfigurations` and `terranixConfigurations` are derived
    from the `guests/` directory.
 3. `task check -- <name>`, then `task up -- <name>`, `task onboard -- <name>`,
-   `task cache-push -- <name>` and `task deploy -- <name>` (deploy substitutes,
-   so the push must succeed first).
+   `task cache-push -- <name>` and `COPY=1 task deploy -- <name>` for the first
+   deploy; later deploys are `task deploy -- <name>` and substitute only.
 
 ## Retired: `adama`
 

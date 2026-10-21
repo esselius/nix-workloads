@@ -346,8 +346,10 @@
               pkgs.restic
               # Administer the kanidm (idm) workload; Kanidm is CLI-first.
               pkgs.kanidm_1_11
-              # Push closures to the Attic cache workload (`task cache-push`).
+              # Push closures to the Attic cache workload and the external
+              # Cachix fallback (`task cache-push`).
               pkgs.attic-client
+              pkgs.cachix
               tf
             ];
             # sops does not read ~/.ssh/id_ed25519 directly; derive a native age
@@ -366,6 +368,8 @@
             text = ''
               if [ "$#" -eq 0 ]; then
                 fd --extension nix --exec nixfmt {}
+              elif [ "$1" = "--check" ]; then
+                fd --extension nix --exec nixfmt --check {}
               else
                 nixfmt "$@"
               fi
@@ -406,6 +410,19 @@
                 path = evalChecks.${name};
               }) checkAttrs
             );
+
+            # The orchestration shell lives outside `nix fmt`; lint it.
+            shellcheck =
+              pkgs.runCommand "shellcheck"
+                {
+                  nativeBuildInputs = [ pkgs.shellcheck ];
+                  src = self;
+                }
+                ''
+                  cd "$src"
+                  shellcheck scripts/*.sh
+                  touch $out
+                '';
 
             # systemd-journal-remote rejects SplitMode=none unless --output is
             # a file (not a directory). Keep that semantic check close to the

@@ -109,6 +109,17 @@ in
         type = types.str;
         default = "homelab:pFO/rlooR8VpYf/qzCPDwxIxynbX5lwtSP0CmBZbAdw=";
       };
+      # External fallback: Cachix is reachable even when the Attic workload
+      # (which runs on the hosts) is down. Both hosts already trust it.
+      cachixUrl = mkOption {
+        type = types.str;
+        default = "https://esselius.cachix.org";
+        description = "Cachix substituter URL (\"\" = disabled).";
+      };
+      cachixPublicKey = mkOption {
+        type = types.str;
+        default = "esselius.cachix.org-1:h6FQzpdflxdZfnnL0caV88xt5K5sNzgO0VIHQthTymA=";
+      };
     };
 
     # The macvlan `eth1` LAN NIC some workloads carry. Absent in `dev` (no

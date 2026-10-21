@@ -7,15 +7,17 @@ let
   cfg = config.local.cache;
 in
 {
-  # The shared Attic cache (the `attic` workload). Additive: extra-substituters
-  # keeps cache.nixos.org in place, so this only adds a source. The URL and
-  # signing key come from the active profile (see modules/local.nix) - the
-  # public key is set once via `attic cache info homelab` after the cache is
-  # created (README "One-time bootstrap").
+  # The shared Attic cache (the `attic` workload) plus the external Cachix
+  # fallback. Additive: extra-substituters keeps cache.nixos.org in place, so
+  # these only add sources. The Attic URL and signing key come from the active
+  # profile (see modules/local.nix); the Cachix key is the same one the hosts
+  # already trust.
   nix.settings = {
-    # `dev` has no Attic (url = ""), so it substitutes from cache.nixos.org and
-    # copies everything else from the builder.
-    extra-substituters = lib.optional (cfg.url != "") cfg.url;
-    extra-trusted-public-keys = lib.optional (cfg.publicKey != "" && cfg.url != "") cfg.publicKey;
+    # `dev` has no Attic (url = ""), but Cachix is still available.
+    extra-substituters =
+      lib.optional (cfg.url != "") cfg.url ++ lib.optional (cfg.cachixUrl != "") cfg.cachixUrl;
+    extra-trusted-public-keys =
+      lib.optional (cfg.publicKey != "" && cfg.url != "") cfg.publicKey
+      ++ lib.optional (cfg.cachixPublicKey != "" && cfg.cachixUrl != "") cfg.cachixPublicKey;
   };
 }

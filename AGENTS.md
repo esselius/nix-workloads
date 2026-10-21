@@ -92,19 +92,21 @@ down.
   ~197 MiB copy of nixpkgs), `system.disableInstallerTools` (drops
   nixos-rebuild-ng and its Python), the `documentation.*` trees, and the
   `environment.defaultPackages` convenience set. Worth ~0.2-0.4 GiB per guest
-  (fleet total ~3 GiB), which the single Attic cache holds. If a guest ever
+  (fleet total ~3 GiB), which the Attic + Cachix caches hold. If a guest ever
   genuinely needs one of these, override it in that guest, not by reverting this
   module. The still-largest shared item is `grafana-alloy` (~360 MiB, the
   monitoring agent); shrinking it means replacing Alloy with node-exporter +
   a log shipper, a separate decision.
 - Builds run on the Mac's `aarch64-linux` `nix.linux-builder`, and results reach
-  the fleet through one shared cache: the `attic` workload
-  (`cache.int.esselius.dev`). `task cache-push -- <name>` pushes only that
-  workload's system closure (never everything the builder compiles), and
-  `task deploy` is substitution-only: it runs `nix-store --realise` on the
-  target before switching, so a path the cache cannot serve fails the deploy
-  instead of being copied from the builder (`attic`/`step-ca` may still copy -
-  they bootstrap the cache). See README "Build cache (Attic)".
+  the fleet through two caches: the `attic` workload
+  (`cache.int.esselius.dev`) and the external `esselius` Cachix fallback.
+  `task cache-push -- <name>` pushes only that workload's system closure (never
+  everything the builder compiles) to both; if one is unavailable the other
+  still counts as success. `task deploy` is substitution-only after the first
+  boot: it runs `nix-store --realise` on the target before switching, so a path
+  neither cache can serve fails the deploy instead of being copied from the
+  builder. The first deploy (`COPY=1`) and `attic`/`step-ca` may copy because
+  they bootstrap the cache. See README "Build cache (Attic + Cachix)".
 - The USB Zigbee coordinator is physical, so a Zigbee2MQTT workload is pinned to
   the board the dongle is plugged into (never migrates with the instance). It can
   be a container: pass the host's `cdc_acm` node with a `unix-char` device
