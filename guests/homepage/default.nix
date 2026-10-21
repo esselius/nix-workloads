@@ -4,6 +4,41 @@
   lib,
   ...
 }:
+let
+  # The Incus UI authenticates with a client certificate, so each tile reads
+  # that host's metrics from VictoriaMetrics instead. A host that is not
+  # scraping yet (rpi5-4gb before it is online) simply shows no data.
+  incusWidget = host: {
+    type = "prometheusmetric";
+    url = "http://monitoring.${config.local.domain}:8428";
+    refreshInterval = 30000;
+    metrics = [
+      {
+        label = "Instances";
+        query = "count(incus_boot_time_seconds{host=\"${host}\"})";
+      }
+      {
+        label = "Memory used";
+        query = "sum(incus_memory_MemTotal_bytes{host=\"${host}\"} - incus_memory_MemAvailable_bytes{host=\"${host}\"})";
+        format.type = "bytes";
+      }
+      {
+        label = "CPU";
+        query = "sum(rate(incus_cpu_seconds_total{host=\"${host}\"}[5m]))";
+        format = {
+          type = "number";
+          suffix = " cores";
+          options.maximumFractionDigits = 2;
+        };
+      }
+      {
+        label = "OOM kills (24h)";
+        query = "sum(increase(incus_memory_OOM_kills_total{host=\"${host}\"}[24h]))";
+        format.type = "number";
+      }
+    ];
+  };
+in
 {
   imports = [
     # Same module the upstream NixOS incus image imports - keeps container boot
@@ -243,6 +278,29 @@
                   }
                 ];
               };
+            };
+          }
+        ]
+        ++ lib.mapAttrsToList (host: url: {
+          "Incus (${host})" = {
+            href = url;
+            description = "Container manager";
+            widget = incusWidget host;
+          };
+        }) config.local.incusUis
+        ++ lib.optionals (config.local.routerUiUrl != null) [
+          {
+            Router = {
+              href = config.local.routerUiUrl;
+              description = "Network + VPN";
+            };
+          }
+        ]
+        ++ lib.optionals (config.local.env == "homelab") [
+          {
+            GoDaddy = {
+              href = "https://dcc.godaddy.com/control/portfolio/esselius.dev/settings";
+              description = "Domain registrar";
             };
           }
         ];
