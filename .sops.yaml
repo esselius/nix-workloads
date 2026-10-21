@@ -1,21 +1,71 @@
 creation_rules:
-  - path_regex: secrets/.*\.ya?ml$
+  # Per-workload rules: a guest can only decrypt the files it actually reads.
+  # The Mac key is in every rule for editing/rekeying. Keep these in sync with
+  # the `sopsFile` references in guests/ and modules/backup.nix.
+  - path_regex: secrets/attic\.ya?ml$
     key_groups:
       - age:
-          # The Mac's SSH key (ssh-to-age ~/.ssh/id_ed25519.pub) - editing and
-          # rekeying from Fox.
-          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av
-          # Each guest's SSH host key, added after first boot. Read it over the
-          # network (the guest's sshd is up in the base image) and convert:
-          #   ssh-keyscan -t ed25519 <staticIp> | ssh-to-age
-          # then `sops updatekeys secrets/<name>.yaml`.
-          - age1uu8e8wajprpktmtl0v3eve2jyvnznkkvuekrqqpt4f0q9nd04u0ql2uy4y # mosquitto
-          - age1g8dzns3l2h22wfudr3z5c3rq8tuqe52zmemn44thzwcrwdfgdutqzks9da # step-ca
-          - age19h3fpwtpmd3rvhya0nf9pz8me6zhxy6ft3xhcwnyndkyvyqn0y9sc0fxsv # monitoring
-          - age1wzm3d7zjhn6e0fplxfk2rhpmprfcqt7ghhvw2vkcxa5affpwzcrqn55kyj # kanidm
-          - age1ph0u3sa8n64tgudqjrqhxg0y42u24rmevadjff4hn28y7m09agqq2kf66e # node-red
-          - age10c2psrdx0df4v5ydfcku8w6nhw7jk9644x2hf5zyl8uvg9f33avs0fm7p9 # zigbee2mqtt
+          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av # Mac
           - age1t3mph434y7qaruhe79su8fcvmut0hw4evp7hphu4p8n0yw77fcds77txhz # attic
-          - age1maahwasrhuzq3n4t2v5gxr294x6wk2agh4dce3d9d7djgrptzu8sm6c5nj # home-assistant
-          - age1ll38nj0atms8h2zed98k9y3j8et8rm07v7wqlu2vz5mflne3d5ns6nh49v # backup
+
+  - path_regex: secrets/homepage\.ya?ml$
+    key_groups:
+      - age:
+          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av # Mac
           - age1mhrxznqfa0yc4nl3vgjtt0ekn2fmlvdn30k7xtedq2drskdrw3jsxpadpu # homepage
+
+  - path_regex: secrets/node-red\.ya?ml$
+    key_groups:
+      - age:
+          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av # Mac
+          - age1ph0u3sa8n64tgudqjrqhxg0y42u24rmevadjff4hn28y7m09agqq2kf66e # node-red
+
+  - path_regex: secrets/step-ca\.ya?ml$
+    key_groups:
+      - age:
+          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av # Mac (also used by dev guests)
+          - age1g8dzns3l2h22wfudr3z5c3rq8tuqe52zmemn44thzwcrwdfgdutqzks9da # step-ca
+
+  - path_regex: secrets/zigbee2mqtt\.ya?ml$
+    key_groups:
+      - age:
+          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av # Mac
+          - age10c2psrdx0df4v5ydfcku8w6nhw7jk9644x2hf5zyl8uvg9f33avs0fm7p9 # zigbee2mqtt
+
+  # Shared restic client credentials: readable by the backup server and every
+  # guest that sets local.backup.paths.
+  - path_regex: secrets/backup\.ya?ml$
+    key_groups:
+      - age:
+          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av # Mac
+          - age1ll38nj0atms8h2zed98k9y3j8et8rm07v7wqlu2vz5mflne3d5ns6nh49v # backup
+          - age1maahwasrhuzq3n4t2v5gxr294x6wk2agh4dce3d9d7djgrptzu8sm6c5nj # home-assistant
+          - age1wzm3d7zjhn6e0fplxfk2rhpmprfcqt7ghhvw2vkcxa5affpwzcrqn55kyj # kanidm
+          - age19h3fpwtpmd3rvhya0nf9pz8me6zhxy6ft3xhcwnyndkyvyqn0y9sc0fxsv # monitoring
+          - age1ph0u3sa8n64tgudqjrqhxg0y42u24rmevadjff4hn28y7m09agqq2kf66e # node-red
+          - age1g8dzns3l2h22wfudr3z5c3rq8tuqe52zmemn44thzwcrwdfgdutqzks9da # step-ca
+          - age10c2psrdx0df4v5ydfcku8w6nhw7jk9644x2hf5zyl8uvg9f33avs0fm7p9 # zigbee2mqtt
+
+  # OIDC/identity material shared by the identity provider and its clients.
+  - path_regex: secrets/kanidm\.ya?ml$
+    key_groups:
+      - age:
+          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av # Mac
+          - age1wzm3d7zjhn6e0fplxfk2rhpmprfcqt7ghhvw2vkcxa5affpwzcrqn55kyj # kanidm
+          - age1mhrxznqfa0yc4nl3vgjtt0ekn2fmlvdn30k7xtedq2drskdrw3jsxpadpu # homepage
+          - age19h3fpwtpmd3rvhya0nf9pz8me6zhxy6ft3xhcwnyndkyvyqn0y9sc0fxsv # monitoring
+
+  - path_regex: secrets/monitoring\.ya?ml$
+    key_groups:
+      - age:
+          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av # Mac
+          - age19h3fpwtpmd3rvhya0nf9pz8me6zhxy6ft3xhcwnyndkyvyqn0y9sc0fxsv # monitoring
+          - age1mhrxznqfa0yc4nl3vgjtt0ekn2fmlvdn30k7xtedq2drskdrw3jsxpadpu # homepage
+
+  # Broker credentials: the broker itself plus Zigbee2MQTT's bridge user.
+  - path_regex: secrets/mosquitto\.ya?ml$
+    key_groups:
+      - age:
+          - age1tc32kf0zh3xtkuu4j6eh9swskyvjlxfxx0q997mgrtl075fn9p8sgy94av # Mac
+          - age1uu8e8wajprpktmtl0v3eve2jyvnznkkvuekrqqpt4f0q9nd04u0ql2uy4y # mosquitto
+          - age10c2psrdx0df4v5ydfcku8w6nhw7jk9644x2hf5zyl8uvg9f33avs0fm7p9 # zigbee2mqtt
