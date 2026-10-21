@@ -63,6 +63,21 @@ in
           "ipv4.address" = staticIp;
         };
       }
+    ]
+    ++ lib.optionals config.local.lan.enable [
+      {
+        # Second NIC: macvlan on the LAN, for discovery of cast/homekit/
+        # zeroconf devices. The address is set statically in the guest
+        # (guests/home-assistant) - incus does not push a macvlan address.
+        name = "eth1";
+        type = "nic";
+        properties = {
+          nictype = "macvlan";
+          parent = config.local.lanParent;
+        };
+      }
+    ]
+    ++ [
       {
         # HA config/state (see the volume resource above).
         name = "data";

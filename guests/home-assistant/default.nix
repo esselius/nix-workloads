@@ -6,6 +6,11 @@
   pyproject-nix-lib,
   ...
 }:
+let
+  # Port of the existing UI-configured HomeKit bridge ("HASS Bridge"), stored in
+  # .storage/core.config_entries. Change this if the bridge's port is changed.
+  homekitPort = 21064;
+in
 {
   imports = [
     # Same module the upstream NixOS incus image imports - keeps container boot
@@ -30,6 +35,26 @@
         IPv6AcceptRA = true;
       };
       linkConfig.RequiredForOnline = "routable";
+    };
+    # Second NIC (macvlan on the host's LAN uplink) so HA can discover and
+    # reach LAN-only devices (cast, homekit, zeroconf, dlna, ...). Fixed LAN
+    # address, deliberately no gateway: the LAN is directly connected and
+    # egress stays on eth0, so there is only one default route.
+    networks."50-eth1" = lib.mkIf config.local.lan.enable {
+      matchConfig.Name = "eth1";
+      address = [ config.local.lan.address ];
+      networkConfig.DHCP = "no";
+      # HA picks the interface that routes 224.0.0.251 as its "default" for
+      # mDNS/zeroconf and HomeKit advertisement. Without this, that is eth0
+      # (the default route), so the bridge never advertises on the LAN and the
+      # Home app cannot discover it. Keep egress on eth0; this only steers
+      # multicast-address source selection to the LAN NIC.
+      routes = [
+        {
+          Destination = "224.0.0.251/32";
+          Scope = "link";
+        }
+      ];
     };
   };
 
@@ -174,6 +199,15 @@
     ];
   };
 
+  # Recorder DB metrics for the PostgreSQL dashboard. Local peer auth as the
+  # postgres superuser; the exporter listens on loopback only and the guest's
+  # Alloy scrapes it.
+  services.prometheus.exporters.postgres = {
+    enable = true;
+    listenAddress = "127.0.0.1";
+    runAsLocalSuperUser = true;
+  };
+
   # HA and its recorder (the co-located PostgreSQL above) start together with
   # the `home-assistant` target.
 
@@ -215,13 +249,31 @@
     }
   '';
 
+  environment.etc."alloy/postgres.alloy".text = ''
+    prometheus.scrape "postgres" {
+      targets    = [{ __address__ = "127.0.0.1:9187" }]
+      job_name   = "postgres"
+      forward_to = [prometheus.relabel.host.receiver]
+    }
+  '';
+
   # nginx (80 for the ACME challenge, 443 for the UI) and SSH - only on the
-  # private backplane.
+  # private backplane. HomeKit is also allowed here because HA advertises the
+  # default-route address (eth0) first; eth1 additionally provides the direct
+  # LAN path and the mDNS discovery.
   networking.firewall.interfaces.eth0.allowedTCPPorts = [
     22
     80
     443
+    homekitPort
   ];
+
+  # The LAN NIC exposes only what the HomeKit bridge needs: the HAP port and
+  # mDNS. SSH and the UI stay on eth0.
+  networking.firewall.interfaces.eth1 = lib.mkIf config.local.lan.enable {
+    allowedTCPPorts = [ homekitPort ];
+    allowedUDPPorts = [ 5353 ];
+  };
 
   system.stateVersion = "26.05";
 }
