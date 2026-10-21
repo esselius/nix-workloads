@@ -376,6 +376,29 @@
             '';
           };
 
+          packages = lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            # Smallest end-to-end guest test: the skeleton has no secrets or
+            # external services, so it proves the shared guest shape still
+            # boots and runs sshd. Needs a KVM-capable aarch64-linux builder
+            # (the Mac linux-builder only has nixos-test, not kvm), so it is a
+            # package rather than part of `nix flake check`.
+            example-vm = pkgs.testers.nixosTest {
+              name = "example-guest";
+              nodes.machine =
+                { modulesPath, ... }:
+                {
+                  disabledModules = [ "${modulesPath}/virtualisation/lxc-container.nix" ];
+                  imports = [ ./guests/example ];
+                  boot.isContainer = false;
+                };
+              testScript = ''
+                machine.wait_for_unit("multi-user.target")
+                machine.succeed("systemctl is-system-running")
+                machine.succeed("systemctl is-active sshd.service")
+              '';
+            };
+          };
+
           checks = evalChecks // {
             # Inventory-level DNS invariant: the terraform/dns config writes one
             # A record per service and one CNAME per alias, keyed by name. Two

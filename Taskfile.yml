@@ -40,11 +40,10 @@ tasks:
         remote="$(scripts/remote-for.sh "$env" "$name")"
         export INCUS_REMOTE="$remote"
 
-        # `dev` has no Attic to seed, and its sops overlay (re-keying secrets
-        # for the dev guest's host key) is a follow-up. Guests without sops
-        # (no sops) need nothing here.
+        # `dev` guests use the Mac's age key and are not re-keyed.
+        # Guests without sops need nothing here.
         if [ "$env" != homelab ]; then
-          echo "onboard: '$env' env - no cache to seed; skipping"
+          echo "onboard: '$env' env - no per-guest key to trust; skipping"
           exit 0
         fi
 
@@ -60,17 +59,21 @@ tasks:
         if grep -qF "$recipient" .sops.yaml; then
           echo "already trusted in .sops.yaml"
         else
-          awk -v r="$recipient" -v n="$name" '
-            { lines[NR]=$0
-              if ($0 ~ /-[[:space:]]*age1[0-9a-z]+/) {
-                last=NR
-                indent=substr($0,1,match($0,/[^[:space:]]/)-1)
-              }
-            }
-            END { for (i=1;i<=NR;i++) { print lines[i]; if (i==last) printf "%s- %s # %s\n", indent, r, n } }
-          ' .sops.yaml > .sops.yaml.tmp
-          mv .sops.yaml.tmp .sops.yaml
-          echo "added $name to .sops.yaml"
+          # With per-workload creation rules there is no single list to append
+          # to; guessing would over-share a secret. Make the operator add the
+          # key to exactly the rules this guest reads.
+          {
+            echo "error: $name's age recipient is not in .sops.yaml:"
+            echo "  $recipient"
+            echo
+            echo "Add it to the creation rule(s) for:"
+            echo "  secrets/$name.yaml (if it exists)"
+            echo "  secrets/backup.yaml (if local.backup.paths is set)"
+            echo "  any other sopsFile the guest reads (kanidm/monitoring/mosquitto)"
+            echo
+            echo "Then re-run: task onboard -- $name"
+          } >&2
+          exit 1
         fi
 
         if [ -f "secrets/$name.yaml" ]; then
@@ -313,6 +316,11 @@ tasks:
           system="$(nix eval --raw --impure --expr builtins.currentSystem)"
           nix build ".#checks.${system}.${name}"
         fi
+
+  test-vm:
+    desc: "Run the example NixOS VM test (needs a KVM-capable aarch64-linux builder)"
+    cmds:
+      - nix build .#packages.aarch64-linux.example-vm -L
 
   # --- Backup restore drill (DR) --------------------------------------------
   # Proves the restic backups are actually restorable: for each guest it runs

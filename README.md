@@ -153,6 +153,11 @@ Secrets live in `secrets/*.yaml`, sops-encrypted to the age recipients in
 runtime). The devshell exports `SOPS_AGE_KEY_CMD` so sops derives an age
 identity from `~/.ssh/id_ed25519` (sops does not read that key directly):
 
+Each secret has its own creation rule: the Mac plus only the guests that read
+it. In particular `secrets/backup.yaml` is shared by the backup server and its
+clients, while `kanidm`/`monitoring`/`mosquitto` are shared only with their
+consumers; a guest cannot decrypt another workload's private secret.
+
 ```fish
 nix develop
 sops secrets/mosquitto.yaml      # edit in place
@@ -169,12 +174,16 @@ COPY=1 task deploy -- mosquitto    # 4. first deploy copies the closure
 task deploy -- mosquitto           # 5. later deploys substitute from the cache
 ```
 
-`task onboard` reads the guest's host key over the incus API, appends it to
-`.sops.yaml`, and runs `sops updatekeys secrets/<name>.yaml`. It no longer
-patches the base image: the first deploy uses `COPY=1` because the stock image
-trusts no internal CA and does not know the cache. The switch it performs then
-installs the CA and substituters declaratively (`modules/local.nix`,
-`modules/nix-cache.nix`), so every later deploy is substitution-only.
+`task onboard` reads the guest's host key over the incus API and checks it is
+already present in `.sops.yaml`; it refuses rather than appending to an
+arbitrary rule, because the rules are now per-workload. Add the key to exactly
+the rule(s) this guest reads (`secrets/<name>.yaml`, plus `secrets/backup.yaml`
+or a shared file such as `kanidm`/`monitoring`/`mosquitto`), then run `task
+onboard -- <name>` to rekey the guest's own file. It no longer patches the base
+image: the first deploy uses `COPY=1` because the stock image trusts no internal
+CA and does not know the cache. The switch it performs then installs the CA and
+substituters declaratively (`modules/local.nix`, `modules/nix-cache.nix`), so
+every later deploy is substitution-only.
 
 Until step 2, `task deploy` fails: sops-nix on the guest cannot decrypt a file
 the guest is not a recipient of. Never commit plaintext secrets.
@@ -227,6 +236,7 @@ task fmt                           # nix fmt
 task check                         # nix flake check (every guest + DNS)
 task check -- mosquitto            # evaluate one workload only (fast inner loop)
 task check -- dns                  # evaluate the DNS terranix config only
+task test-vm                       # example NixOS VM test (needs a KVM builder)
 ```
 
 `task <task> -- <args>` forwards args to the wrapped command. `up`/`down`/`plan`

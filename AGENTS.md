@@ -55,9 +55,12 @@ down.
   same module the upstream NixOS incus image uses - so `nixos-rebuild switch`
   keeps the container-specific boot/network wiring intact.
 - Run `nix fmt` and `nix flake check` before committing. Both are wired into the
-  flake (`formatter`, `checks.eval-all`, `checks.fmt`, `checks.dns-zone`).
-  `nix flake check` evaluates the `dns`/`dns-dev` terranix configs too; it does
-  not apply them.
+  flake (`formatter`, `checks.eval-all`, `checks.fmt`, `checks.shellcheck`,
+  `checks.dns-zone`). `nix flake check` evaluates the `dns`/`dns-dev` terranix
+  configs too; it does not apply them.
+- `task test-vm` builds the `example` NixOS VM test. It needs a KVM-capable
+  aarch64-linux builder, so it is a package (`packages.aarch64-linux.example-vm`),
+  not part of `nix flake check` or the GitHub-hosted CI runners.
 - Keep the Grafana dashboards in `guests/monitoring/dashboards/` per-host
   filterable - the fleet spans two incus servers. Each dashboard that reads
   host-labelled metrics defines a `host` query variable sourced from the metric's
@@ -68,7 +71,10 @@ down.
   hard-coding a host.
 - Never commit plaintext secrets. Smart-home services need broker passwords, the
   Zigbee2MQTT network key, and Postgres credentials; wire those through sops/age
-  the same way `nix-homelab-hosts` does, not as literals.
+  the same way `nix-homelab-hosts` does, not as literals. Each secret has its own
+  creation rule in `.sops.yaml` (Mac plus only its consumers); `task onboard`
+  refuses to guess a rule, so add a new guest's key to exactly the files it
+  reads before rekeying.
 - `modules/lxc-credentials.nix` provides the opt-in option
   `local.lxc.allowSystemdCredentials` (default off), which overlays
   `pkgs.distrobuilder.generator` to stop it clearing `LoadCredential=` for
