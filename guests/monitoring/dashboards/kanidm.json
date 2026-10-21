@@ -1,0 +1,175 @@
+{
+  "uid": "kanidm",
+  "title": "Kanidm",
+  "description": "Identity provider health: unit state, HTTPS reachability, certificate expiry, HTTP status mix, OAuth2 failures and journal.",
+  "tags": ["identity", "kanidm", "risk"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Service active",
+      "description": "kanidm.service state in the guest.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_systemd_unit_state{host=\"kanidm\",name=\"kanidm.service\",state=\"active\"}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "HTTPS reachable",
+      "description": "Blackbox probe of https://idm.<zone>.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] },
+          "mappings": [ { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } } ]
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "probe_success{job=\"integrations/blackbox/kanidm\"}", "instant": true }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Cert expiry",
+      "description": "Days until the idm TLS certificate expires. step-ca renews it automatically; a falling value means renewal is failing.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 14 }, { "color": "green", "value": 30 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(probe_ssl_earliest_cert_expiry{job=\"integrations/blackbox/kanidm\"} - time()) / 86400",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Probe latency",
+      "description": "Blackbox HTTP probe duration.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "decimals": 3 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "probe_duration_seconds{job=\"integrations/blackbox/kanidm\"}", "instant": true }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "HTTP responses by status",
+      "description": "Kanidm request log, counted by status class.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({host=\"kanidm\"} | json | SYSLOG_IDENTIFIER=\"kanidmd\" | message=~\"(?i).*status_code: 2[0-9][0-9].*\" [5m]))",
+          "legendFormat": "2xx",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(count_over_time({host=\"kanidm\"} | json | SYSLOG_IDENTIFIER=\"kanidmd\" | message=~\"(?i).*status_code: 4[0-9][0-9].*\" [5m]))",
+          "legendFormat": "4xx",
+          "queryType": "range"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(count_over_time({host=\"kanidm\"} | json | SYSLOG_IDENTIFIER=\"kanidmd\" | message=~\"(?i).*status_code: 5[0-9][0-9].*\" [5m]))",
+          "legendFormat": "5xx",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "OAuth2 failures",
+      "description": "Invalid OAuth2 client/secret and 401 responses. A burst usually means a client secret drifted.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({host=\"kanidm\"} | json | SYSLOG_IDENTIFIER=\"kanidmd\" | message=~\"(?i).*invalid oauth2.*\" [5m]))",
+          "legendFormat": "invalid client/secret",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(count_over_time({host=\"kanidm\"} | json | SYSLOG_IDENTIFIER=\"kanidmd\" | message=~\"(?i).*status_code: 401.*\" [5m]))",
+          "legendFormat": "401",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Error log volume",
+      "description": "Journal entries from kanidmd at warning/error priority.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({host=\"kanidm\"} | json | SYSLOG_IDENTIFIER=\"kanidmd\" | PRIORITY=~\"[0-4]\" [5m]))",
+          "legendFormat": "kanidmd warn+err",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "Kanidm journal",
+      "description": "kanidmd log stream.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 20 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [
+        { "refId": "A", "expr": "{host=\"kanidm\"} | json | SYSLOG_IDENTIFIER=\"kanidmd\"", "queryType": "range" }
+      ]
+    }
+  ]
+}

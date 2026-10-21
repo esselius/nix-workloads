@@ -1,0 +1,175 @@
+{
+  "uid": "network",
+  "title": "Network",
+  "description": "Host interface throughput, drops/errors, conntrack pressure and TCP health. Container traffic is visible on the host's veth/incus bridge interfaces.",
+  "tags": ["network", "host", "risk"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Hosts reporting",
+      "description": "Hosts with node_exporter network metrics.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "count(count by (host) (node_network_up{node_type=\"host\"})) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Interfaces down",
+      "description": "Host interfaces (excluding loopback and virtual links) whose operstate is not up.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(node_network_up{node_type=\"host\",device!~\"lo|veth.*|br-.*|incusbr.*\"} == 0) or vector(0)",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Conntrack used",
+      "description": "Percentage of the host conntrack table in use. A table near 100% drops new flows.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 2,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 90 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (host) (node_nf_conntrack_entries{node_type=\"host\"} / node_nf_conntrack_entries_limit{node_type=\"host\"} * 100)",
+          "legendFormat": "{{host}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "TCP established",
+      "description": "Established TCP connections on each host.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (host) (node_netstat_Tcp_CurrEstab{node_type=\"host\"})",
+          "legendFormat": "{{host}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Host throughput",
+      "description": "Physical and bridge interface throughput. Container traffic is included on the bridge and veth devices.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(node_network_receive_bytes_total{node_type=\"host\",device!~\"lo\"}[5m])",
+          "legendFormat": "{{host}} {{device}} rx"
+        },
+        {
+          "refId": "B",
+          "expr": "-rate(node_network_transmit_bytes_total{node_type=\"host\",device!~\"lo\"}[5m])",
+          "legendFormat": "{{host}} {{device}} tx"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Drops and errors",
+      "description": "Receive/transmit drops and errors. Sustained non-zero rates mean a saturated link, wrong MTU or driver problem.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(node_network_receive_errs_total{node_type=\"host\",device!~\"lo\"}[5m]) + rate(node_network_receive_drop_total{node_type=\"host\",device!~\"lo\"}[5m])",
+          "legendFormat": "{{host}} {{device}} rx drop+err"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(node_network_transmit_errs_total{node_type=\"host\",device!~\"lo\"}[5m]) + rate(node_network_transmit_drop_total{node_type=\"host\",device!~\"lo\"}[5m])",
+          "legendFormat": "{{host}} {{device}} tx drop+err"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Conntrack table",
+      "description": "Used and maximum conntrack entries per host.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "node_nf_conntrack_entries{node_type=\"host\"}", "legendFormat": "{{host}} used" },
+        { "refId": "B", "expr": "node_nf_conntrack_entries_limit{node_type=\"host\"}", "legendFormat": "{{host}} limit" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "TCP health",
+      "description": "Retransmissions, resets and listen queue drops. Rises indicate packet loss or an overloaded listener.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_netstat_Tcp_RetransSegs{node_type=\"host\"}[5m])", "legendFormat": "{{host}} retrans" },
+        { "refId": "B", "expr": "rate(node_netstat_Tcp_OutRsts{node_type=\"host\"}[5m])", "legendFormat": "{{host}} resets" },
+        { "refId": "C", "expr": "rate(node_netstat_TcpExt_ListenDrops{node_type=\"host\"}[5m])", "legendFormat": "{{host}} listen drops" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "Router syslog",
+      "description": "Router syslog stream. Filter for `wan`, `dhcp`, `wg` or severity terms when debugging connectivity.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [
+        { "refId": "A", "expr": "{host=\"router\", job=\"router-syslog\"}", "queryType": "range" }
+      ]
+    }
+  ]
+}

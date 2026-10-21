@@ -1,0 +1,194 @@
+{
+  "uid": "dns",
+  "title": "DNS",
+  "description": "Unbound on both hosts: query rate, cache efficiency, response codes, recursion latency and synthetic internal-zone resolution.",
+  "tags": ["dns", "unbound", "host", "risk"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Resolvers up",
+      "description": "Unbound instances whose exporter can read the control socket.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum(unbound_up{job=\"unbound\"})", "instant": true }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "SERVFAIL rate",
+      "description": "SERVFAIL answers per second. A sustained rate means upstream resolution is failing.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0,
+          "decimals": 3,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.1 }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(unbound_answer_rcodes_total{job=\"unbound\",rcode=\"SERVFAIL\"}[5m])) or vector(0)",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Query rate",
+      "description": "Total queries/s handled by both resolvers.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0, "decimals": 2 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(unbound_queries_total{job=\"unbound\"}[5m])) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Cache hit ratio",
+      "description": "Hits / (hits + misses). A falling ratio means cache pressure or more unique names.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 2,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 50 }, { "color": "green", "value": 80 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(unbound_cache_hits_total{job=\"unbound\"}[5m])) / clamp_min(sum(rate(unbound_cache_hits_total{job=\"unbound\"}[5m])) + sum(rate(unbound_cache_misses_total{job=\"unbound\"}[5m])), 1) * 100 or vector(0)",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Queries/s by host",
+      "description": "Query rate per resolver.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (host) (rate(unbound_queries_total{job=\"unbound\"}[5m]))", "legendFormat": "{{host}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Cache hit ratio",
+      "description": "Cache effectiveness per resolver.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (host) (rate(unbound_cache_hits_total{job=\"unbound\"}[5m])) / clamp_min(sum by (host) (rate(unbound_cache_hits_total{job=\"unbound\"}[5m])) + sum by (host) (rate(unbound_cache_misses_total{job=\"unbound\"}[5m])), 1) * 100",
+          "legendFormat": "{{host}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Response codes",
+      "description": "Answer rcode mix. A rising SERVFAIL/NXDOMAIN rate points at an upstream or zone problem.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (rcode) (rate(unbound_answer_rcodes_total{job=\"unbound\"}[5m]))",
+          "legendFormat": "{{rcode}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Query types",
+      "description": "Queries/s by record type.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (type) (rate(unbound_query_types_total{job=\"unbound\"}[5m]))",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Recursion latency",
+      "description": "Average and median recursion time for upstream lookups.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "unbound_recursion_time_seconds_avg{job=\"unbound\"}", "legendFormat": "{{host}} avg" },
+        { "refId": "B", "expr": "unbound_recursion_time_seconds_median{job=\"unbound\"}", "legendFormat": "{{host}} median" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Dropped / unwanted",
+      "description": "Queries dropped because the request list was full, plus unwanted queries and replies.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(unbound_request_list_exceeded_total{job=\"unbound\"}[5m])", "legendFormat": "{{host}} request list exceeded" },
+        { "refId": "B", "expr": "rate(unbound_unwanted_queries_total{job=\"unbound\"}[5m])", "legendFormat": "{{host}} unwanted queries" },
+        { "refId": "C", "expr": "rate(unbound_unwanted_replies_total{job=\"unbound\"}[5m])", "legendFormat": "{{host}} unwanted replies" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Cache memory",
+      "description": "Memory used by Unbound's caches.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (host, cache) (unbound_memory_caches_bytes{job=\"unbound\"})", "legendFormat": "{{host}} {{cache}}" }
+      ]
+    }
+  ]
+}

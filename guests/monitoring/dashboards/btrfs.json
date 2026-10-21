@@ -1,0 +1,195 @@
+{
+  "uid": "btrfs",
+  "title": "btrfs",
+  "description": "btrfs device integrity: checksum (corruption) errors, I/O errors and remaining device space on the physical hosts. Errors are cumulative since the filesystem was created; the counter only goes up.",
+  "tags": ["storage", "btrfs", "integrity", "risk"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Checksum errors (24h, per host)",
+      "description": "New btrfs filesystem checksum failures in the last 24 hours, shown separately for each host. Any non-zero value means the NVMe returned data that did not match its checksum.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (host) (increase(node_btrfs_device_errors_total{type=\"corruption\", node_type=\"host\"}[24h]))",
+          "legendFormat": "{{host}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Checksum errors (total, per host)",
+      "description": "Checksum failures since the filesystem was created (or the counters were last reset with `btrfs device stats -z`), shown separately for each host.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (host, device) (node_btrfs_device_errors_total{type=\"corruption\", node_type=\"host\"})",
+          "legendFormat": "{{host}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Other device errors (24h, per host)",
+      "description": "New read, write, flush or generation errors in the last 24 hours, shown separately for each host. These point at the transport or drive rather than checksum mismatches.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (host) (increase(node_btrfs_device_errors_total{type!=\"corruption\", node_type=\"host\"}[24h]))",
+          "legendFormat": "{{host}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Hosts reporting",
+      "description": "Hosts whose node exporter returns btrfs device stats. A missing host is covered by the Node down alert.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "count(count by (host) (node_btrfs_device_errors_total{node_type=\"host\"})) or vector(0)", "instant": true }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Checksum errors (cumulative)",
+      "description": "Step chart of the corruption counter per host and device. A flat line is healthy.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (host, device) (node_btrfs_device_errors_total{type=\"corruption\", node_type=\"host\"})",
+          "legendFormat": "{{host}} {{device}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "New checksum errors per hour",
+      "description": "Checksum failures in a trailing one-hour window, per host.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (host) (increase(node_btrfs_device_errors_total{type=\"corruption\", node_type=\"host\"}[1h]))",
+          "legendFormat": "{{host}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "All device errors (cumulative, by type)",
+      "description": "Every btrfs device error counter. Read/write/flush/generation errors indicate I/O problems; corruption means checksum mismatches.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (host, device, type) (node_btrfs_device_errors_total{node_type=\"host\"})",
+          "legendFormat": "{{host}} {{device}} {{type}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Device space unused",
+      "description": "Unallocated bytes on each btrfs device. A shrinking value with low filesystem free space means chunks cannot be allocated.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (host, device) (node_btrfs_device_unused_bytes{node_type=\"host\"})",
+          "legendFormat": "{{host}} {{device}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Per-host counters",
+      "description": "Current btrfs device error counters by host, device and type.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (host, device, type) (node_btrfs_device_errors_total{node_type=\"host\"})",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "renameByName": { "Value": "errors" }
+          }
+        }
+      ]
+    }
+  ]
+}

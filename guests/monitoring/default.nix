@@ -8,6 +8,11 @@
 let
   inv = import ../../inventory.nix;
 
+  # Router syslog arrives over UDP. 1514 instead of 514 keeps Alloy (which runs
+  # as a DynamicUser without CAP_NET_BIND_SERVICE) on an unprivileged port;
+  # point the router's remote-syslog target at this guest's backplane address.
+  routerSyslogPort = 1514;
+
   centralScrapes = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
       svc: m:
@@ -946,6 +951,67 @@ in
               labels.severity = "critical";
               annotations.summary = "{{ $labels.host }} restic repository check failed";
             }
+            {
+              uid = "btrfs-checksum-errors";
+              title = "btrfs checksum errors";
+              condition = "C";
+              data = [
+                {
+                  refId = "A";
+                  relativeTimeRange = {
+                    from = 300;
+                    to = 0;
+                  };
+                  datasourceUid = "victoriametrics";
+                  model = {
+                    datasource = {
+                      type = "prometheus";
+                      uid = "victoriametrics";
+                    };
+                    editorMode = "code";
+                    # Checksum failures are reported as `corruption` device
+                    # errors. Host-only: containers see the same underlying
+                    # filesystem and would otherwise alert once per guest.
+                    expr = "increase(node_btrfs_device_errors_total{type=\"corruption\", node_type=\"host\"}[1h])";
+                    instant = true;
+                    range = false;
+                    refId = "A";
+                  };
+                }
+                {
+                  refId = "C";
+                  datasourceUid = "__expr__";
+                  model = {
+                    conditions = [
+                      {
+                        evaluator = {
+                          type = "gt";
+                          params = [ 0 ];
+                        };
+                        operator.type = "and";
+                        query.params = [ "A" ];
+                        reducer.type = "last";
+                        type = "query";
+                      }
+                    ];
+                    datasource = {
+                      type = "__expr__";
+                      uid = "__expr__";
+                    };
+                    expression = "A";
+                    refId = "C";
+                    type = "threshold";
+                  };
+                }
+              ];
+              # A host that stopped reporting is covered by `node-down`; drop
+              # this rule rather than firing twice.
+              noDataState = "OK";
+              execErrState = "Alerting";
+              "for" = "5m";
+              labels.severity = "critical";
+              annotations.summary = "{{ $labels.host }} {{ $labels.device }} has new btrfs checksum (corruption) errors";
+            }
           ];
         }
       ];
@@ -974,16 +1040,30 @@ in
   # exporter + scrape (Alloy loads every /etc/alloy/*.alloy file).
   environment.etc."alloy/blackbox.alloy".text = ''
     prometheus.exporter.blackbox "certs" {
-      config = "{ modules: { http_2xx: { prober: http, timeout: 5s } } }"
+      config = "{ modules: { http_2xx: { prober: http, timeout: 5s }, tcp_connect: { prober: tcp, timeout: 5s } } }"
 
       // Only service certs we issue - not step-ca's own server cert, which is
       // deliberately short-lived (24h) and auto-rotated, so its expiry is never
-      // actionable and would always trip the rule.
+      // actionable and would always trip the rule. step-ca is probed over TCP
+      // for that reason; Kanidm's cert is a normal 90-day service cert.
       target {
         name    = "monitoring"
         address = "https://monitoring.${config.local.domain}"
         module  = "http_2xx"
       }
+
+      target {
+        name    = "kanidm"
+        address = "https://idm.${config.local.domain}"
+        module  = "http_2xx"
+      }
+
+      target {
+        name    = "step-ca"
+        address = "step-ca.${config.local.domain}:8443"
+        module  = "tcp_connect"
+      }
+
     }
 
     prometheus.scrape "blackbox" {
@@ -1010,6 +1090,34 @@ in
   '';
 
   environment.etc."alloy/centralized.alloy".text = centralScrapes;
+
+  # Router syslog -> Loki. ASUS routers emit RFC3164 over UDP; keep the parsed
+  # header fields (hostname, severity, facility, source address) as Loki labels,
+  # and tag the stream so it is easy to separate from guest journals. The
+  # firewall below only lets the router's WireGuard address reach this port.
+  environment.etc."alloy/router-syslog.alloy".text = ''
+    loki.relabel "router_syslog" {
+      // Only the `rules` export is used, via `relabel_rules` below.
+      forward_to = []
+
+      rule {
+        action = "labelmap"
+        regex  = "__syslog_(.+)"
+      }
+    }
+
+    loki.source.syslog "router" {
+      listener {
+        address       = "0.0.0.0:${toString routerSyslogPort}"
+        protocol      = "udp"
+        syslog_format = "rfc3164"
+        labels = { host = "router", job = "router-syslog" }
+      }
+
+      relabel_rules = loki.relabel.router_syslog.rules
+      forward_to     = [loki.write.default.receiver]
+    }
+  '';
 
   # Loki is the durable log store; the local journal only needs to buffer
   # between Alloy reads. The remote journal spool below is also tmpfs: it is a
@@ -1130,6 +1238,16 @@ in
     8428
     19532
   ];
+
+  # Router syslog (UDP). This guest's firewall is iptables-based (not
+  # nftables), so `extraInputRules` is ignored; add the accept to the nixos-fw
+  # chain directly and only for the router's WireGuard address.
+  networking.firewall.extraCommands = lib.mkIf (config.local.routerAddress != null) ''
+    iptables -w -A nixos-fw -p udp -s ${config.local.routerAddress} --dport ${toString routerSyslogPort} -j nixos-fw-accept
+  '';
+  networking.firewall.extraStopCommands = lib.mkIf (config.local.routerAddress != null) ''
+    iptables -w -D nixos-fw -p udp -s ${config.local.routerAddress} --dport ${toString routerSyslogPort} -j nixos-fw-accept 2>/dev/null || true
+  '';
 
   system.stateVersion = "26.05";
 }

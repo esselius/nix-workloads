@@ -1,0 +1,157 @@
+{
+  "uid": "step-ca",
+  "title": "step-ca",
+  "description": "Internal CA health: service state, ACME port reachability, backup freshness and journal. Issued-certificate expiry is on the Certificates dashboard.",
+  "tags": ["pki", "step-ca", "risk"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Service active",
+      "description": "step-ca.service state in the guest.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_systemd_unit_state{host=\"step-ca\",name=\"step-ca.service\",state=\"active\"}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "ACME port reachable",
+      "description": "TCP probe of step-ca.<zone>:8443.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] },
+          "mappings": [ { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } } ]
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "probe_success{job=\"integrations/blackbox/step-ca\"}", "instant": true }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Probe latency",
+      "description": "TCP connect time to the ACME port.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "decimals": 4 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "probe_duration_seconds{job=\"integrations/blackbox/step-ca\"}", "instant": true }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Backup age",
+      "description": "Age of the newest restic snapshot for the CA database and provisioners.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 129600 }, { "color": "red", "value": 172800 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - max(restic_backup_timestamp{host=\"step-ca\"})",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Service state",
+      "description": "step-ca unit active over time.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_systemd_unit_state{host=\"step-ca\",name=\"step-ca.service\",state=\"active\"}",
+          "legendFormat": "active"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Probe state",
+      "description": "TCP probe success/failure history.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "probe_success{job=\"integrations/blackbox/step-ca\"}", "legendFormat": "probe" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Log volume",
+      "description": "step-ca log lines per 5m, split by warning/error priority.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({host=\"step-ca\"} | json | SYSLOG_IDENTIFIER=\"step-ca\" [5m]))",
+          "legendFormat": "all",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(count_over_time({host=\"step-ca\"} | json | SYSLOG_IDENTIFIER=\"step-ca\" | PRIORITY=~\"[0-4]\" [5m]))",
+          "legendFormat": "warn+err",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "step-ca journal",
+      "description": "step-ca / badger log stream.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 20 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [
+        { "refId": "A", "expr": "{host=\"step-ca\"}", "queryType": "range" }
+      ]
+    }
+  ]
+}

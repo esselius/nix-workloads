@@ -96,6 +96,36 @@
       "targets": [
         { "refId": "A", "expr": "time() - node_boot_time_seconds{node_type!=\"container\"}", "legendFormat": "{{host}}" }
       ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "btrfs checksum errors (1h)",
+      "description": "New btrfs device checksum failures (corruption errors) in the last hour. Any non-zero value means the NVMe returned data that did not match its checksum.",
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (host) (increase(node_btrfs_device_errors_total{type=\"corruption\", node_type=\"host\"}[1h]))",
+          "legendFormat": "{{host}}"
+        }
+      ]
     }
   ]
 }
