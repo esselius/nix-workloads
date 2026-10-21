@@ -55,7 +55,17 @@ down.
   same module the upstream NixOS incus image uses - so `nixos-rebuild switch`
   keeps the container-specific boot/network wiring intact.
 - Run `nix fmt` and `nix flake check` before committing. Both are wired into the
-  flake (`formatter`, `checks.eval-all`, `checks.fmt`).
+  flake (`formatter`, `checks.eval-all`, `checks.fmt`, `checks.dns-zone`).
+  `nix flake check` evaluates the `dns`/`dns-dev` terranix configs too; it does
+  not apply them.
+- Keep the Grafana dashboards in `guests/monitoring/dashboards/` per-host
+  filterable - the fleet spans two incus servers. Each dashboard that reads
+  host-labelled metrics defines a `host` query variable sourced from the metric's
+  own host label (`up{node_type="host"}` for host-level metrics, the exporter's
+  metric for app dashboards) with `includeAll` + `allValue: ".*"`, and applies it
+  as `host=~"$host"` in every query; legends include `{{host}}`. Add dependent
+  variables (`instance`, `type`, `device`, ...) the same way rather than
+  hard-coding a host.
 - Never commit plaintext secrets. Smart-home services need broker passwords, the
   Zigbee2MQTT network key, and Postgres credentials; wire those through sops/age
   the same way `nix-homelab-hosts` does, not as literals.

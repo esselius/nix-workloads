@@ -8,7 +8,66 @@
   "version": 1,
   "refresh": "30s",
   "time": { "from": "now-24h", "to": "now" },
-  "templating": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "victoriametrics"
+        },
+        "query": "label_values(up{node_type=\"host\"}, host)",
+        "definition": "label_values(up{node_type=\"host\"}, host)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "device",
+        "label": "Interface",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "victoriametrics"
+        },
+        "query": "label_values(node_network_up{node_type=\"host\",device!~\"lo|veth.*|br-.*|incusbr.*\"}, device)",
+        "definition": "label_values(node_network_up{node_type=\"host\",device!~\"lo|veth.*|br-.*|incusbr.*\"}, device)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "options": [],
+        "regex": ""
+      }
+    ]
+  },
   "annotations": { "list": [] },
   "panels": [
     {
@@ -20,7 +79,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "count(count by (host) (node_network_up{node_type=\"host\"})) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "count(count by (host) (node_network_up{device=~\"$device\", host=~\"$host\", node_type=\"host\"})) or vector(0)", "instant": true }
       ]
     },
     {
@@ -42,7 +101,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "count(node_network_up{node_type=\"host\",device!~\"lo|veth.*|br-.*|incusbr.*\"} == 0) or vector(0)",
+          "expr": "count(node_network_up{device=~\"$device\", host=~\"$host\", node_type=\"host\",device!~\"lo|veth.*|br-.*|incusbr.*\"} == 0) or vector(0)",
           "instant": true
         }
       ]
@@ -67,7 +126,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (host) (node_nf_conntrack_entries{node_type=\"host\"} / node_nf_conntrack_entries_limit{node_type=\"host\"} * 100)",
+          "expr": "max by (host) (node_nf_conntrack_entries{host=~\"$host\", node_type=\"host\"} / node_nf_conntrack_entries_limit{host=~\"$host\", node_type=\"host\"} * 100)",
           "legendFormat": "{{host}}",
           "instant": true
         }
@@ -84,7 +143,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (host) (node_netstat_Tcp_CurrEstab{node_type=\"host\"})",
+          "expr": "max by (host) (node_netstat_Tcp_CurrEstab{host=~\"$host\", node_type=\"host\"})",
           "legendFormat": "{{host}}",
           "instant": true
         }
@@ -101,12 +160,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(node_network_receive_bytes_total{node_type=\"host\",device!~\"lo\"}[5m])",
+          "expr": "rate(node_network_receive_bytes_total{device=~\"$device\", host=~\"$host\", node_type=\"host\",device!~\"lo\"}[5m])",
           "legendFormat": "{{host}} {{device}} rx"
         },
         {
           "refId": "B",
-          "expr": "-rate(node_network_transmit_bytes_total{node_type=\"host\",device!~\"lo\"}[5m])",
+          "expr": "-rate(node_network_transmit_bytes_total{device=~\"$device\", host=~\"$host\", node_type=\"host\",device!~\"lo\"}[5m])",
           "legendFormat": "{{host}} {{device}} tx"
         }
       ]
@@ -122,12 +181,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(node_network_receive_errs_total{node_type=\"host\",device!~\"lo\"}[5m]) + rate(node_network_receive_drop_total{node_type=\"host\",device!~\"lo\"}[5m])",
+          "expr": "rate(node_network_receive_errs_total{device=~\"$device\", host=~\"$host\", node_type=\"host\",device!~\"lo\"}[5m]) + rate(node_network_receive_drop_total{device=~\"$device\", host=~\"$host\", node_type=\"host\",device!~\"lo\"}[5m])",
           "legendFormat": "{{host}} {{device}} rx drop+err"
         },
         {
           "refId": "B",
-          "expr": "rate(node_network_transmit_errs_total{node_type=\"host\",device!~\"lo\"}[5m]) + rate(node_network_transmit_drop_total{node_type=\"host\",device!~\"lo\"}[5m])",
+          "expr": "rate(node_network_transmit_errs_total{device=~\"$device\", host=~\"$host\", node_type=\"host\",device!~\"lo\"}[5m]) + rate(node_network_transmit_drop_total{device=~\"$device\", host=~\"$host\", node_type=\"host\",device!~\"lo\"}[5m])",
           "legendFormat": "{{host}} {{device}} tx drop+err"
         }
       ]
@@ -141,8 +200,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "node_nf_conntrack_entries{node_type=\"host\"}", "legendFormat": "{{host}} used" },
-        { "refId": "B", "expr": "node_nf_conntrack_entries_limit{node_type=\"host\"}", "legendFormat": "{{host}} limit" }
+        { "refId": "A", "expr": "node_nf_conntrack_entries{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} used" },
+        { "refId": "B", "expr": "node_nf_conntrack_entries_limit{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} limit" }
       ]
     },
     {
@@ -154,9 +213,9 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "rate(node_netstat_Tcp_RetransSegs{node_type=\"host\"}[5m])", "legendFormat": "{{host}} retrans" },
-        { "refId": "B", "expr": "rate(node_netstat_Tcp_OutRsts{node_type=\"host\"}[5m])", "legendFormat": "{{host}} resets" },
-        { "refId": "C", "expr": "rate(node_netstat_TcpExt_ListenDrops{node_type=\"host\"}[5m])", "legendFormat": "{{host}} listen drops" }
+        { "refId": "A", "expr": "rate(node_netstat_Tcp_RetransSegs{host=~\"$host\", node_type=\"host\"}[5m])", "legendFormat": "{{host}} retrans" },
+        { "refId": "B", "expr": "rate(node_netstat_Tcp_OutRsts{host=~\"$host\", node_type=\"host\"}[5m])", "legendFormat": "{{host}} resets" },
+        { "refId": "C", "expr": "rate(node_netstat_TcpExt_ListenDrops{host=~\"$host\", node_type=\"host\"}[5m])", "legendFormat": "{{host}} listen drops" }
       ]
     },
     {

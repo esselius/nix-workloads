@@ -6,7 +6,38 @@
   "version": 1,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
-  "templating": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "victoriametrics"
+        },
+        "query": "label_values(broker_uptime, host)",
+        "definition": "label_values(broker_uptime, host)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "options": [],
+        "regex": ""
+      }
+    ]
+  },
   "annotations": { "list": [] },
   "panels": [
     {
@@ -17,7 +48,7 @@
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "broker_clients_connected", "legendFormat": "{{host}}" }
+        { "refId": "A", "expr": "broker_clients_connected{host=~\"$host\"}", "legendFormat": "{{host}}" }
       ]
     },
     {
@@ -28,7 +59,7 @@
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "broker_subscriptions_count", "legendFormat": "{{host}}" }
+        { "refId": "A", "expr": "broker_subscriptions_count{host=~\"$host\"}", "legendFormat": "{{host}}" }
       ]
     },
     {
@@ -39,7 +70,7 @@
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "broker_retained_messages_count", "legendFormat": "{{host}}" }
+        { "refId": "A", "expr": "broker_retained_messages_count{host=~\"$host\"}", "legendFormat": "{{host}}" }
       ]
     },
     {
@@ -50,7 +81,7 @@
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "dtdurations" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "broker_uptime", "legendFormat": "{{host}}" }
+        { "refId": "A", "expr": "broker_uptime{host=~\"$host\"}", "legendFormat": "{{host}}" }
       ]
     },
     {
@@ -61,8 +92,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "rate(broker_messages_received[5m])", "legendFormat": "{{host}} received" },
-        { "refId": "B", "expr": "rate(broker_messages_sent[5m])", "legendFormat": "{{host}} sent" }
+        { "refId": "A", "expr": "rate(broker_messages_received{host=~\"$host\"}[5m])", "legendFormat": "{{host}} received" },
+        { "refId": "B", "expr": "rate(broker_messages_sent{host=~\"$host\"}[5m])", "legendFormat": "{{host}} sent" }
       ]
     },
     {
@@ -73,8 +104,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
       "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "rate(broker_bytes_received[5m])", "legendFormat": "{{host}} received" },
-        { "refId": "B", "expr": "rate(broker_bytes_sent[5m])", "legendFormat": "{{host}} sent" }
+        { "refId": "A", "expr": "rate(broker_bytes_received{host=~\"$host\"}[5m])", "legendFormat": "{{host}} received" },
+        { "refId": "B", "expr": "rate(broker_bytes_sent{host=~\"$host\"}[5m])", "legendFormat": "{{host}} sent" }
       ]
     },
     {
@@ -85,7 +116,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "rate(broker_publish_messages_dropped[5m])", "legendFormat": "{{host}}" }
+        { "refId": "A", "expr": "rate(broker_publish_messages_dropped{host=~\"$host\"}[5m])", "legendFormat": "{{host}}" }
       ]
     },
     {
@@ -96,8 +127,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "broker_clients_connected", "legendFormat": "{{host}} connected" },
-        { "refId": "B", "expr": "broker_clients_disconnected", "legendFormat": "{{host}} disconnected" }
+        { "refId": "A", "expr": "broker_clients_connected{host=~\"$host\"}", "legendFormat": "{{host}} connected" },
+        { "refId": "B", "expr": "broker_clients_disconnected{host=~\"$host\"}", "legendFormat": "{{host}} disconnected" }
       ]
     }
   ]

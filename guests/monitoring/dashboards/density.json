@@ -11,12 +11,40 @@
   "templating": {
     "list": [
       {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "victoriametrics"
+        },
+        "query": "label_values(up{node_type=\"host\"}, host)",
+        "definition": "label_values(up{node_type=\"host\"}, host)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "options": [],
+        "regex": ""
+      },
+      {
         "name": "instance",
         "label": "Instance",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-        "query": "label_values(incus_memory_MemTotal_bytes, name)",
-        "definition": "label_values(incus_memory_MemTotal_bytes, name)",
+        "query": "label_values(incus_memory_MemTotal_bytes{host=~\"$host\"}, name)",
+        "definition": "label_values(incus_memory_MemTotal_bytes{host=~\"$host\"}, name)",
         "includeAll": true,
         "multi": true,
         "allValue": ".*",
@@ -69,7 +97,7 @@
       },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "(1 - sum(node_memory_MemAvailable_bytes{node_type=\"host\"}) / sum(node_memory_MemTotal_bytes{node_type=\"host\"})) * 100", "instant": true }
+        { "refId": "A", "expr": "(1 - sum(node_memory_MemAvailable_bytes{host=~\"$host\", node_type=\"host\"}) / sum(node_memory_MemTotal_bytes{host=~\"$host\", node_type=\"host\"})) * 100", "instant": true }
       ]
     },
     {
@@ -82,7 +110,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_memory_MemAvailable_bytes{node_type=\"host\"})", "instant": true }
+        { "refId": "A", "expr": "sum(node_memory_MemAvailable_bytes{host=~\"$host\", node_type=\"host\"})", "instant": true }
       ]
     },
     {
@@ -95,7 +123,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_memory_AnonPages_bytes{node_type=\"host\"})", "instant": true }
+        { "refId": "A", "expr": "sum(node_memory_AnonPages_bytes{host=~\"$host\", node_type=\"host\"})", "instant": true }
       ]
     },
     {
@@ -108,7 +136,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_memory_Cached_bytes{node_type=\"host\"})", "instant": true }
+        { "refId": "A", "expr": "sum(node_memory_Cached_bytes{host=~\"$host\", node_type=\"host\"})", "instant": true }
       ]
     },
     {
@@ -121,7 +149,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_memory_SwapTotal_bytes{node_type=\"host\"} - node_memory_SwapFree_bytes{node_type=\"host\"})", "instant": true }
+        { "refId": "A", "expr": "sum(node_memory_SwapTotal_bytes{host=~\"$host\", node_type=\"host\"} - node_memory_SwapFree_bytes{host=~\"$host\", node_type=\"host\"})", "instant": true }
       ]
     },
     {
@@ -134,7 +162,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_zram_orig_data_bytes) - sum(node_zram_compr_data_bytes) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "sum(node_zram_orig_data_bytes{host=~\"$host\"}) - sum(node_zram_compr_data_bytes{host=~\"$host\"}) or vector(0)", "instant": true }
       ]
     },
     {
@@ -147,7 +175,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "min": 0 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_zram_orig_data_bytes) / clamp_min(sum(node_zram_compr_data_bytes), 1) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "sum(node_zram_orig_data_bytes{host=~\"$host\"}) / clamp_min(sum(node_zram_compr_data_bytes{host=~\"$host\"}), 1) or vector(0)", "instant": true }
       ]
     },
     {
@@ -160,7 +188,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_ksmd_pages_sharing) * 4096 or vector(0)", "instant": true }
+        { "refId": "A", "expr": "sum(node_ksmd_pages_sharing{host=~\"$host\"}) * 4096 or vector(0)", "instant": true }
       ]
     },
     {
@@ -173,7 +201,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_ksmd_general_profit_bytes) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "sum(node_ksmd_general_profit_bytes{host=~\"$host\"}) or vector(0)", "instant": true }
       ]
     },
     {
@@ -200,7 +228,7 @@
       },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "max(node_ksmd_run) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "max(node_ksmd_run{host=~\"$host\"}) or vector(0)", "instant": true }
       ]
     },
     {
@@ -213,7 +241,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(incus_memory_Active_anon_bytes{type=\"container\"} + incus_memory_Inactive_anon_bytes{type=\"container\"}) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "sum(incus_memory_Active_anon_bytes{host=~\"$host\", name=~\"$instance\", type=\"container\"} + incus_memory_Inactive_anon_bytes{host=~\"$host\", name=~\"$instance\", type=\"container\"}) or vector(0)", "instant": true }
       ]
     },
     {
@@ -226,7 +254,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(incus_memory_Active_file_bytes{type=\"container\"} + incus_memory_Inactive_file_bytes{type=\"container\"}) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "sum(incus_memory_Active_file_bytes{host=~\"$host\", name=~\"$instance\", type=\"container\"} + incus_memory_Inactive_file_bytes{host=~\"$host\", name=~\"$instance\", type=\"container\"}) or vector(0)", "instant": true }
       ]
     },
     {
@@ -246,7 +274,7 @@
       },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(increase(incus_memory_OOM_kills_total{type=\"container\"}[1h])) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "sum(increase(incus_memory_OOM_kills_total{host=~\"$host\", name=~\"$instance\", type=\"container\"}[1h])) or vector(0)", "instant": true }
       ]
     },
     {
@@ -259,7 +287,7 @@
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "rate(node_pressure_memory_stalled_seconds_total{node_type=\"host\"}[5m]) * 100 or vector(0)", "instant": true }
+        { "refId": "A", "expr": "rate(node_pressure_memory_stalled_seconds_total{host=~\"$host\", node_type=\"host\"}[5m]) * 100 or vector(0)", "instant": true }
       ]
     },
     {
@@ -272,7 +300,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(incus_memory_Active_anon_bytes{type=\"container\",name!~\"home-assistant|monitoring\"} + incus_memory_Inactive_anon_bytes{type=\"container\",name!~\"home-assistant|monitoring\"}) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "sum(incus_memory_Active_anon_bytes{host=~\"$host\", name=~\"$instance\", type=\"container\",name!~\"home-assistant|monitoring\"} + incus_memory_Inactive_anon_bytes{host=~\"$host\", name=~\"$instance\", type=\"container\",name!~\"home-assistant|monitoring\"}) or vector(0)", "instant": true }
       ]
     },
     {
@@ -285,7 +313,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "count(incus_memory_MemTotal_bytes{type=\"container\"}) or vector(0)", "instant": true }
+        { "refId": "A", "expr": "count(incus_memory_MemTotal_bytes{host=~\"$host\", name=~\"$instance\", type=\"container\"}) or vector(0)", "instant": true }
       ]
     },
     {
@@ -301,11 +329,11 @@
       },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "node_memory_AnonPages_bytes{node_type=\"host\"}", "legendFormat": "anon" },
-        { "refId": "B", "expr": "node_memory_Cached_bytes{node_type=\"host\"}", "legendFormat": "file cache" },
-        { "refId": "C", "expr": "node_memory_KReclaimable_bytes{node_type=\"host\"}", "legendFormat": "kernel reclaimable" },
-        { "refId": "D", "expr": "node_memory_SUnreclaim_bytes{node_type=\"host\"}", "legendFormat": "kernel unreclaimable" },
-        { "refId": "E", "expr": "node_memory_Shmem_bytes{node_type=\"host\"}", "legendFormat": "shmem" }
+        { "refId": "A", "expr": "node_memory_AnonPages_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} anon" },
+        { "refId": "B", "expr": "node_memory_Cached_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} file cache" },
+        { "refId": "C", "expr": "node_memory_KReclaimable_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} kernel reclaimable" },
+        { "refId": "D", "expr": "node_memory_SUnreclaim_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} kernel unreclaimable" },
+        { "refId": "E", "expr": "node_memory_Shmem_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} shmem" }
       ]
     },
     {
@@ -318,9 +346,9 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "node_memory_MemTotal_bytes{node_type=\"host\"} - node_memory_MemAvailable_bytes{node_type=\"host\"}", "legendFormat": "used" },
-        { "refId": "B", "expr": "node_memory_MemAvailable_bytes{node_type=\"host\"}", "legendFormat": "available" },
-        { "refId": "C", "expr": "node_memory_MemTotal_bytes{node_type=\"host\"}", "legendFormat": "total" }
+        { "refId": "A", "expr": "node_memory_MemTotal_bytes{host=~\"$host\", node_type=\"host\"} - node_memory_MemAvailable_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} used" },
+        { "refId": "B", "expr": "node_memory_MemAvailable_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} available" },
+        { "refId": "C", "expr": "node_memory_MemTotal_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} total" }
       ]
     },
     {
@@ -333,10 +361,10 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 15, "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "node_zram_orig_data_bytes", "legendFormat": "zram original" },
-        { "refId": "B", "expr": "node_zram_compr_data_bytes", "legendFormat": "zram compressed" },
-        { "refId": "C", "expr": "node_zram_mem_used_bytes", "legendFormat": "zram in RAM" },
-        { "refId": "D", "expr": "node_memory_SwapTotal_bytes{node_type=\"host\"} - node_memory_SwapFree_bytes{node_type=\"host\"}", "legendFormat": "swap used" }
+        { "refId": "A", "expr": "node_zram_orig_data_bytes{host=~\"$host\"}", "legendFormat": "{{host}} zram original" },
+        { "refId": "B", "expr": "node_zram_compr_data_bytes{host=~\"$host\"}", "legendFormat": "{{host}} zram compressed" },
+        { "refId": "C", "expr": "node_zram_mem_used_bytes{host=~\"$host\"}", "legendFormat": "{{host}} zram in RAM" },
+        { "refId": "D", "expr": "node_memory_SwapTotal_bytes{host=~\"$host\", node_type=\"host\"} - node_memory_SwapFree_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} swap used" }
       ]
     },
     {
@@ -349,10 +377,10 @@
       "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "node_ksmd_pages_shared", "legendFormat": "shared" },
-        { "refId": "B", "expr": "node_ksmd_pages_sharing", "legendFormat": "sharing (saved pages)" },
-        { "refId": "C", "expr": "node_ksmd_pages_unshared", "legendFormat": "unshared" },
-        { "refId": "D", "expr": "node_ksmd_pages_volatile", "legendFormat": "volatile" }
+        { "refId": "A", "expr": "node_ksmd_pages_shared{host=~\"$host\"}", "legendFormat": "{{host}} shared" },
+        { "refId": "B", "expr": "node_ksmd_pages_sharing{host=~\"$host\"}", "legendFormat": "{{host}} sharing (saved pages)" },
+        { "refId": "C", "expr": "node_ksmd_pages_unshared{host=~\"$host\"}", "legendFormat": "{{host}} unshared" },
+        { "refId": "D", "expr": "node_ksmd_pages_volatile{host=~\"$host\"}", "legendFormat": "{{host}} volatile" }
       ]
     },
     {
@@ -365,8 +393,8 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "node_ksmd_pages_sharing * 4096", "legendFormat": "gross saved" },
-        { "refId": "B", "expr": "node_ksmd_general_profit_bytes", "legendFormat": "net profit" }
+        { "refId": "A", "expr": "node_ksmd_pages_sharing{host=~\"$host\"} * 4096", "legendFormat": "{{host}} gross saved" },
+        { "refId": "B", "expr": "node_ksmd_general_profit_bytes{host=~\"$host\"}", "legendFormat": "{{host}} net profit" }
       ]
     },
     {
@@ -379,10 +407,10 @@
       "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "rate(node_vmstat_cow_ksm{node_type=\"host\"}[5m])", "legendFormat": "COW / s" },
-        { "refId": "B", "expr": "rate(node_ksmd_full_scans_total[5m])", "legendFormat": "full scans / s" },
-        { "refId": "C", "expr": "node_ksmd_pages_to_scan", "legendFormat": "pages to scan" },
-        { "refId": "D", "expr": "node_ksmd_sleep_seconds", "legendFormat": "sleep seconds" }
+        { "refId": "A", "expr": "rate(node_vmstat_cow_ksm{host=~\"$host\", node_type=\"host\"}[5m])", "legendFormat": "{{host}} COW / s" },
+        { "refId": "B", "expr": "rate(node_ksmd_full_scans_total{host=~\"$host\"}[5m])", "legendFormat": "{{host}} full scans / s" },
+        { "refId": "C", "expr": "node_ksmd_pages_to_scan{host=~\"$host\"}", "legendFormat": "{{host}} pages to scan" },
+        { "refId": "D", "expr": "node_ksmd_sleep_seconds{host=~\"$host\"}", "legendFormat": "{{host}} sleep seconds" }
       ]
     },
     {
@@ -395,7 +423,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "stacking": { "mode": "normal", "group": "A" }, "fillOpacity": 35, "lineWidth": 1 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "incus_memory_Active_anon_bytes{type=\"container\",name=~\"$instance\"} + incus_memory_Inactive_anon_bytes{type=\"container\",name=~\"$instance\"}", "legendFormat": "{{name}}" }
+        { "refId": "A", "expr": "incus_memory_Active_anon_bytes{host=~\"$host\", type=\"container\",name=~\"$instance\"} + incus_memory_Inactive_anon_bytes{host=~\"$host\", type=\"container\",name=~\"$instance\"}", "legendFormat": "{{host}} / {{name}}" }
       ]
     },
     {
@@ -408,7 +436,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "stacking": { "mode": "normal", "group": "A" }, "fillOpacity": 35, "lineWidth": 1 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "incus_memory_Active_file_bytes{type=\"container\",name=~\"$instance\"} + incus_memory_Inactive_file_bytes{type=\"container\",name=~\"$instance\"}", "legendFormat": "{{name}}" }
+        { "refId": "A", "expr": "incus_memory_Active_file_bytes{host=~\"$host\", type=\"container\",name=~\"$instance\"} + incus_memory_Inactive_file_bytes{host=~\"$host\", type=\"container\",name=~\"$instance\"}", "legendFormat": "{{host}} / {{name}}" }
       ]
     },
     {
@@ -421,7 +449,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "incus_memory_MemTotal_bytes{type=\"container\",name=~\"$instance\"} - incus_memory_MemAvailable_bytes{type=\"container\",name=~\"$instance\"}", "legendFormat": "{{name}}" }
+        { "refId": "A", "expr": "incus_memory_MemTotal_bytes{host=~\"$host\", type=\"container\",name=~\"$instance\"} - incus_memory_MemAvailable_bytes{host=~\"$host\", type=\"container\",name=~\"$instance\"}", "legendFormat": "{{host}} / {{name}}" }
       ]
     },
     {
@@ -434,8 +462,8 @@
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\",node_type=\"host\"}[5m])) * 100)", "legendFormat": "host all cores" },
-        { "refId": "B", "expr": "sum by (name) (rate(incus_cpu_seconds_total{type=\"container\",name=~\"$instance\"}[5m])) * 100", "legendFormat": "{{name}} one core" }
+        { "refId": "A", "expr": "100 - (avg by (host) (rate(node_cpu_seconds_total{host=~\"$host\", mode=\"idle\",node_type=\"host\"}[5m])) * 100)", "legendFormat": "{{host}} host all cores" },
+        { "refId": "B", "expr": "sum by (host, name) (rate(incus_cpu_seconds_total{host=~\"$host\", type=\"container\",name=~\"$instance\"}[5m])) * 100", "legendFormat": "{{host}} / {{name}} one core" }
       ]
     },
     {
@@ -448,10 +476,10 @@
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "rate(node_pressure_memory_waiting_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "memory some" },
-        { "refId": "B", "expr": "rate(node_pressure_memory_stalled_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "memory full" },
-        { "refId": "C", "expr": "rate(node_pressure_io_stalled_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "io full" },
-        { "refId": "D", "expr": "rate(node_pressure_cpu_waiting_seconds_total{node_type=\"host\"}[5m]) * 100", "legendFormat": "cpu some" }
+        { "refId": "A", "expr": "rate(node_pressure_memory_waiting_seconds_total{host=~\"$host\", node_type=\"host\"}[5m]) * 100", "legendFormat": "{{host}} memory some" },
+        { "refId": "B", "expr": "rate(node_pressure_memory_stalled_seconds_total{host=~\"$host\", node_type=\"host\"}[5m]) * 100", "legendFormat": "{{host}} memory full" },
+        { "refId": "C", "expr": "rate(node_pressure_io_stalled_seconds_total{host=~\"$host\", node_type=\"host\"}[5m]) * 100", "legendFormat": "{{host}} io full" },
+        { "refId": "D", "expr": "rate(node_pressure_cpu_waiting_seconds_total{host=~\"$host\", node_type=\"host\"}[5m]) * 100", "legendFormat": "{{host}} cpu some" }
       ]
     },
     {
@@ -464,7 +492,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "expr": "node_btrfs_used_bytes{node_type=\"host\"}", "legendFormat": "{{block_group_type}}" }
+        { "refId": "A", "expr": "node_btrfs_used_bytes{host=~\"$host\", node_type=\"host\"}", "legendFormat": "{{host}} {{block_group_type}}" }
       ]
     },
     {
@@ -477,7 +505,7 @@
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 80 }, { "color": "red", "value": 90 } ] } }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "(1 - sum(node_filesystem_avail_bytes{mountpoint=\"/persist\"}) / sum(node_filesystem_size_bytes{mountpoint=\"/persist\"})) * 100", "instant": true }
+        { "refId": "A", "expr": "(1 - sum(node_filesystem_avail_bytes{host=~\"$host\", mountpoint=\"/persist\"}) / sum(node_filesystem_size_bytes{host=~\"$host\", mountpoint=\"/persist\"})) * 100", "instant": true }
       ]
     },
     {
@@ -489,7 +517,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_filesystem_avail_bytes{mountpoint=\"/persist\"})", "instant": true }
+        { "refId": "A", "expr": "sum(node_filesystem_avail_bytes{host=~\"$host\", mountpoint=\"/persist\"})", "instant": true }
       ]
     },
     {
@@ -501,7 +529,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_btrfs_used_bytes{node_type=\"host\",block_group_type=\"data\"})", "instant": true }
+        { "refId": "A", "expr": "sum(node_btrfs_used_bytes{host=~\"$host\", node_type=\"host\",block_group_type=\"data\"})", "instant": true }
       ]
     },
     {
@@ -514,7 +542,7 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "textMode": "auto" },
       "targets": [
-        { "refId": "A", "expr": "sum(node_btrfs_used_bytes{node_type=\"host\",block_group_type=\"metadata\"})", "instant": true }
+        { "refId": "A", "expr": "sum(node_btrfs_used_bytes{host=~\"$host\", node_type=\"host\",block_group_type=\"metadata\"})", "instant": true }
       ]
     },
     {

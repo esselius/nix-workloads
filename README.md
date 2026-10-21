@@ -491,6 +491,19 @@ Dashboards (`guests/monitoring/dashboards/`, folder "Homelab"):
 `home-assistant-down`, `zigbee2mqtt-bridge-offline`, `zigbee2mqtt-exporter-down`
 - all routed to ntfy like the rest.
 
+Every fleet dashboard is filterable per incus host rather than assuming a single
+one. The host-level dashboards (`incus`, `nodes`, `density`, `pressure`,
+`network`, `overview`, `btrfs`) define a `host` variable sourced from
+`up{node_type="host"}` (so it lists the physical incus servers, never the
+guests) and apply it as `host=~"$host"` to every query; `density`/`pressure` add
+a dependent `instance` variable, `incus` adds `instance` and `type`, `nodes`/
+`network` add `device`/`mountpoint`, and `certificates` a `target` variable.
+`dns`, `wireguard` and `backups` use the `host` label their own exporters emit.
+The app dashboards (`broker`, `homeassistant`, `postgres`, `zigbee2mqtt`) and
+`kanidm`/`step-ca` carry the same `host` variable, so a workload's series stay
+filterable when it is placed on a different incus server. Defaults are "All"
+(`.*`), so a fresh dashboard still shows the whole fleet.
+
 ## Backups (restic)
 
 The `backup` workload runs a restic REST server (`services.restic.server`, port

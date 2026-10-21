@@ -8,7 +8,38 @@
   "version": 1,
   "refresh": "30s",
   "time": { "from": "now-24h", "to": "now" },
-  "templating": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "victoriametrics"
+        },
+        "query": "label_values(pg_stat_database_numbackends{job=\"postgres\"}, host)",
+        "definition": "label_values(pg_stat_database_numbackends{job=\"postgres\"}, host)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "options": [],
+        "regex": ""
+      }
+    ]
+  },
   "annotations": { "list": [] },
   "panels": [
     {
@@ -29,7 +60,7 @@
         "overrides": []
       },
       "targets": [
-        { "refId": "A", "expr": "pg_exporter_last_scrape_error{job=\"postgres\"} == 0", "instant": true }
+        { "refId": "A", "expr": "pg_exporter_last_scrape_error{host=~\"$host\", job=\"postgres\"} == 0", "instant": true }
       ]
     },
     {
@@ -41,7 +72,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "pg_database_size_bytes{job=\"postgres\",datname=\"hass\"}", "instant": true }
+        { "refId": "A", "expr": "pg_database_size_bytes{host=~\"$host\", job=\"postgres\",datname=\"hass\"}", "instant": true }
       ]
     },
     {
@@ -61,8 +92,8 @@
         "overrides": []
       },
       "targets": [
-        { "refId": "A", "expr": "sum(pg_stat_database_numbackends{job=\"postgres\",datname=\"hass\"})", "legendFormat": "backends", "instant": true },
-        { "refId": "B", "expr": "max(pg_settings_max_connections{job=\"postgres\"})", "legendFormat": "max", "instant": true }
+        { "refId": "A", "expr": "sum(pg_stat_database_numbackends{host=~\"$host\", job=\"postgres\",datname=\"hass\"})", "legendFormat": "backends", "instant": true },
+        { "refId": "B", "expr": "max(pg_settings_max_connections{host=~\"$host\", job=\"postgres\"})", "legendFormat": "max", "instant": true }
       ]
     },
     {
@@ -85,7 +116,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "increase(pg_stat_database_deadlocks{job=\"postgres\",datname=\"hass\"}[24h]) or vector(0)",
+          "expr": "increase(pg_stat_database_deadlocks{host=~\"$host\", job=\"postgres\",datname=\"hass\"}[24h]) or vector(0)",
           "instant": true
         }
       ]
@@ -101,7 +132,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "pg_database_size_bytes{job=\"postgres\"}",
+          "expr": "pg_database_size_bytes{host=~\"$host\", job=\"postgres\"}",
           "legendFormat": "{{datname}}"
         }
       ]
@@ -117,7 +148,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "pg_stat_activity_count{job=\"postgres\"}",
+          "expr": "pg_stat_activity_count{host=~\"$host\", job=\"postgres\"}",
           "legendFormat": "{{datname}} {{state}}"
         }
       ]
@@ -133,12 +164,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(pg_stat_database_xact_commit{job=\"postgres\",datname=\"hass\"}[5m])",
+          "expr": "rate(pg_stat_database_xact_commit{host=~\"$host\", job=\"postgres\",datname=\"hass\"}[5m])",
           "legendFormat": "commit"
         },
         {
           "refId": "B",
-          "expr": "rate(pg_stat_database_xact_rollback{job=\"postgres\",datname=\"hass\"}[5m])",
+          "expr": "rate(pg_stat_database_xact_rollback{host=~\"$host\", job=\"postgres\",datname=\"hass\"}[5m])",
           "legendFormat": "rollback"
         }
       ]
@@ -154,7 +185,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(pg_stat_database_blks_hit{job=\"postgres\",datname=\"hass\"}[5m])) / clamp_min(sum(rate(pg_stat_database_blks_hit{job=\"postgres\",datname=\"hass\"}[5m])) + sum(rate(pg_stat_database_blks_read{job=\"postgres\",datname=\"hass\"}[5m])), 1) * 100",
+          "expr": "sum(rate(pg_stat_database_blks_hit{host=~\"$host\", job=\"postgres\",datname=\"hass\"}[5m])) / clamp_min(sum(rate(pg_stat_database_blks_hit{host=~\"$host\", job=\"postgres\",datname=\"hass\"}[5m])) + sum(rate(pg_stat_database_blks_read{host=~\"$host\", job=\"postgres\",datname=\"hass\"}[5m])), 1) * 100",
           "legendFormat": "hass"
         }
       ]
@@ -170,7 +201,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(pg_stat_database_temp_bytes{job=\"postgres\",datname=\"hass\"}[5m])",
+          "expr": "rate(pg_stat_database_temp_bytes{host=~\"$host\", job=\"postgres\",datname=\"hass\"}[5m])",
           "legendFormat": "temp"
         }
       ]
@@ -186,7 +217,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "pg_stat_activity_max_tx_duration{job=\"postgres\"}",
+          "expr": "pg_stat_activity_max_tx_duration{host=~\"$host\", job=\"postgres\"}",
           "legendFormat": "{{datname}} {{state}}"
         }
       ]
@@ -202,7 +233,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "pg_locks_count{job=\"postgres\"}",
+          "expr": "pg_locks_count{host=~\"$host\", job=\"postgres\"}",
           "legendFormat": "{{datname}} {{mode}}"
         }
       ]
