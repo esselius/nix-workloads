@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Post-deploy smoke test for one incus workload.
-# Usage: scripts/verify-guest.sh <env> <workload>
+# Usage: scripts/verify-guest.sh <env> <workload> [expected-system]
 set -euo pipefail
 
-env="${1:?usage: $0 <env> <workload>}"
-name="${2:?usage: $0 <env> <workload>}"
+env="${1:?usage: $0 <env> <workload> [expected-system]}"
+name="${2:?usage: $0 <env> <workload> [expected-system]}"
+expected="${3:-}"
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
@@ -75,7 +76,11 @@ if [ -n "$unit" ]; then
   fi
 fi
 
-printf '  current: %s\n' "$(run readlink /run/current-system 2>/dev/null || echo unknown)"
+current="$(run readlink /run/current-system 2>/dev/null || echo unknown)"
+printf '  current: %s\n' "$current"
+if [ -n "$expected" ] && [ "$current" != "$expected" ]; then
+  bad "active system is not the deployed closure (expected $expected)"
+fi
 
 if [ "$fail" -ne 0 ]; then
   echo "verify $name: FAILED" >&2

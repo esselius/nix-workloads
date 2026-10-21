@@ -153,13 +153,18 @@ tasks:
           echo "$env env: no cache; copying the closure via the $profile VM"
         fi
 
-        NIX_CONFIG="ssl-cert-file = $ca" \
-        NIX_SSHOPTS="$ssh_opts" \
-        TMPDIR=/tmp \
-          nixos-rebuild switch --flake ".#$attr" \
-          --target-host "root@$ip" $use_subs
+        if ! NIX_CONFIG="ssl-cert-file = $ca" \
+          NIX_SSHOPTS="$ssh_opts" \
+          TMPDIR=/tmp \
+            nixos-rebuild switch --flake ".#$attr" \
+            --target-host "root@$ip" $use_subs; then
+          # switch-to-configuration can exit non-zero for a transient unit
+          # failure (e.g. journal-upload before the network is up). The
+          # closure check below decides whether the deploy actually landed.
+          echo "warning: nixos-rebuild reported a failure; verifying the active system" >&2
+        fi
 
-        if ! scripts/verify-guest.sh "$env" "$name"; then
+        if ! scripts/verify-guest.sh "$env" "$name" "$system"; then
           echo "deploy verification failed for $name" >&2
           if [ "${AUTO_ROLLBACK:-0}" = 1 ]; then
             echo "rolling $name back to the previous generation" >&2
@@ -188,10 +193,13 @@ tasks:
         env="${ENV:-homelab}"
         remote="$(scripts/remote-for.sh "$env" "$name")"
         export INCUS_REMOTE="$remote"
-        incus exec "$name" -- sh -ec '
-          nix-env --rollback -p /nix/var/nix/profiles/system
-          /nix/var/nix/profiles/system/bin/switch-to-configuration switch
-        '
+        incus exec "$name" -- nix-env --rollback -p /nix/var/nix/profiles/system
+        # switch-to-configuration exits non-zero if any unit failed during the
+        # switch (e.g. a transient network unit); the smoke test below is the
+        # authority on whether the rollback actually converged.
+        if ! incus exec "$name" -- /nix/var/nix/profiles/system/bin/switch-to-configuration switch; then
+          echo "warning: activation reported failed units; checking actual state" >&2
+        fi
         scripts/verify-guest.sh "$env" "$name"
 
   cache-push:
