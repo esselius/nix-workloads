@@ -41,14 +41,16 @@ secrets/<name>.yaml          sops-encrypted secrets (see Secrets)
 one address space; within an env, *hosts* are incus servers and *placement* maps
 a service to a host:
 
-| Env | Incus host | Zone |
+| Env | Incus hosts | Zone |
 |------|-----------|------|
-| `homelab` | `rpi5-8gb` (later `rpi5-4gb`) | `int.esselius.dev` |
+| `homelab` | `rpi5-8gb` and `rpi5-4gb` (placement decides) | `int.esselius.dev` |
 | `dev` | a local Colima VM | `dev.int.esselius.dev` |
 
 The zone is **flat**: a service has one name (`mosquitto.<zone>`) whichever host
 runs it, and clients never learn the host. Moving a workload between hosts is a
-change to `placement` (and its A record), never to the workloads. Guests read the
+change to `placement` (and its A record), never to the workloads. `backup` and
+`homepage` currently live on `rpi5-4gb`; everything else defaults to
+`rpi5-8gb`. Guests read the
 derived `local.*` knobs (`domain`, `realm`, `dnsAddress`, ...) from
 `modules/local.nix`, so nothing hard-codes a domain or a `10.43` address. The
 Kanidm identity **realm** is separate from `domain`, so a dev Kanidm serves
@@ -56,7 +58,8 @@ Kanidm identity **realm** is separate from `domain`, so a dev Kanidm serves
 
 The flake builds each guest for both envs: `nixosConfigurations.<name>` is the
 homelab, `<name>-dev` the local testbed (same modules, `env = "dev"`); terranix
-mirrors this (`<name>` and `<name>-dev`). `nix flake check` evaluates all of them.
+mirrors this (`<name>` and `<name>-dev`, plus the guest-less `dns`/`dns-dev`).
+`nix flake check` evaluates all of them.
 
 ## Networking
 
@@ -107,6 +110,9 @@ WireGuard address (`10.6.0.3` on `rpi5-8gb`), serves the AXFR zone from a
 persistent zonefile, and recurses to public resolvers for everything else.
 `cache`/`monitoring` and the `_mqtt._tcp` SRV record are static Unbound records
 because the Incus provider supports only A/AAAA/CNAME/TXT custom entries.
+The zone is guest-less infrastructure: apply it with `task up -- dns`
+(`deploy-all`/`provision-all` do this before the guest loop), and
+`task check -- dns` evaluates the terranix config.
 
 The zone is **internal-only** and deliberately **not** delegated from the public
 `esselius.dev` zone: a delegation whose authority is a private address cannot be
@@ -114,8 +120,8 @@ followed by a public/forwarding resolver (it answers `REFUSED` /
 `No Reachable Authority`). The router is untouched (the stock RT-BE50 cannot do
 conditional forwarding) and there are no GoDaddy records for the zone.
 Consequences: `int.esselius.dev` resolves only while on the VPN. Unbound keeps
-serving the last transferred zone if Incus or CoreDNS is unavailable, and internet
-resolution does not depend on either.
+serving the last transferred zone if Incus or its network-zone DNS is
+unavailable, and internet resolution does not depend on either.
 
 **Credentials shim.** LXC's distrobuilder generator writes
 `service.d/zzz-lxc-service.conf`, clearing `LoadCredential=`/`ImportCredential=`
@@ -203,15 +209,17 @@ nix develop
 task plan   -- example             # plan the instance
 task up     -- example             # create/update it (tf apply)
 task down   -- example             # destroy it
+task up     -- dns                 # apply the guest-less network zone
 
 task onboard -- example            # trust host key for sops + seed cache trust
 task cache-push -- example         # push the guest's closure to the Attic cache
 task deploy -- example             # nixos-rebuild the guest onto it (see Deploy)
-task deploy-all                    # deploy every workload in dependency order
-task provision-all                 # up -> onboard -> cache-push -> deploy, all workloads
+task deploy-all                    # apply DNS, then deploy every guest in order
+task provision-all                 # apply DNS, then up/onboard/cache-push/deploy every guest
 task fmt                           # nix fmt
-task check                         # nix flake check (every workload)
+task check                         # nix flake check (every guest + DNS)
 task check -- mosquitto            # evaluate one workload only (fast inner loop)
+task check -- dns                  # evaluate the DNS terranix config only
 ```
 
 `task <task> -- <args>` forwards args to the wrapped command. `up`/`down`/`plan`
@@ -228,6 +236,7 @@ below):
 
 ```fish
 task dev-bootstrap        # dev incus bridge + profiles (once)
+ENV=dev task up -- dns     # dev network zone (once, or after DNS changes)
 task dev-access-up        # map *.dev.int.esselius.dev -> the dev VM
 task dev-access-status    # mapping + lookup + ingress reachability
 task dev-access-down      # remove the mapping
@@ -268,16 +277,20 @@ These tasks are macOS-only; on other platforms they warn and no-op.
 
 ## Deploy (first boot)
 
+On a fresh env, apply the DNS zone first (`task up -- dns`); `deploy-all` and
+`provision-all` do this automatically before their guest loop.
+
 `task up` (the terranix apply) seeds root's SSH key automatically: a
 `local-exec` provisioner on the instance runs `incus file push --uid 0 --gid 0
 --mode 600` (the base image ships no cloud-init, so this is the only
 key-injection path; the flags matter, or the push copies the Mac's source
 ownership/mode and trips sshd's `StrictModes`).
 
-`task deploy -- example` looks the instance's address up from incus (`incus list
-example -c 4 --format csv`), builds the toplevel **locally on the Mac**
-(dispatched to its `aarch64-linux` `nix.linux-builder`, a remote in
-`/etc/nix/machines`), then hands it to the instance.
+`task deploy -- example` resolves the workload's incus remote from
+`inventory.hostFor`, reads the instance's configured `eth0` IPv4 address, builds
+the toplevel **locally on the Mac** (dispatched to its `aarch64-linux`
+`nix.linux-builder`, a remote in `/etc/nix/machines`), then hands it to the
+instance.
 
 Deploy is **substitution-only**: before switching it runs `nix-store --realise
 <toplevel>` on the target, so the target must pull the whole closure from its
@@ -403,13 +416,16 @@ paths stay hot.
 
 ## Adding a workload
 
-1. `cp -r terraform/example terraform/<name>`, rename the resource, and set a
-   unique `staticIp` (`10.43.0.x`).
-2. `cp -r guests/example guests/<name>`, set `networking.hostName`, and, if the
-   guest needs a deviation from the common shape (no sops, extra `specialArgs`),
-   add it to `guestMeta` in `flake.nix`. Otherwise nothing to register: both
-   `nixosConfigurations` and `terranixConfigurations` are derived from the
-   `guests/` directory.
+1. `cp -r terraform/example terraform/<name>` and rename the resource. Do not
+   invent a static IP: `inv.ipFor` derives it from the service's `placement` and
+   the host's subnet.
+2. `cp -r guests/example guests/<name>` and set `networking.hostName`. Add the
+   service to `inventory.nix` (`ip`, `dns`, `memory`, `metrics`, optional
+   `placement`/`lan`); the DNS A/CNAME records and the `tf` remote follow from
+   it. If the guest needs a deviation from the common shape (no sops, extra
+   `specialArgs`), add it to `guestMeta` in `flake.nix`. Otherwise nothing to
+   register: both `nixosConfigurations` and `terranixConfigurations` are derived
+   from the `guests/` directory.
 3. `task check -- <name>`, then `task up -- <name>`, `task onboard -- <name>`,
    `task cache-push -- <name>` and `task deploy -- <name>` (deploy substitutes,
    so the push must succeed first).
@@ -569,12 +585,14 @@ same pattern as the Zigbee2MQTT frontend).
   need the whole `usb` device instead. The workload is therefore pinned to
   `rpi5-8gb` and cannot migrate to the other board.
 - **No cluster**: `rpi5-8gb` and `rpi5-4gb` are standalone incus servers. There
-  is no failover; `rpi5-8gb` is a single point of failure. The migration removed
-  the *host-rebuild* coupling, not the hardware SPOF.
+  is no failover; `rpi5-8gb` remains a single point of failure for Attic, DNS
+  and most smart-home services. The migration removed the *host-rebuild*
+  coupling, not the hardware SPOF.
 - **Secrets**: broker passwords, the Zigbee2MQTT network key, and Postgres
   credentials must go through sops/age (as in `nix-homelab-hosts`), never as
   literals in these configs.
-- **State**: incus storage lives on the host's persistent pool, and the
-  `backup` workload snapshots the critical state to restic (see Backups), but
-  those repos are on the same board - a full loss of `rpi5-8gb` loses the
-  primary state *and* its local backups. An offsite copy is still outstanding.
+- **State**: incus storage lives on each host's persistent pool, and the
+  `backup` workload (now on `rpi5-4gb`) receives the restic snapshots from the
+  other guests. That separates backups from `rpi5-8gb` failure, but a loss of
+  `rpi5-4gb` loses the backup target, and a full loss of both loses everything.
+  An offsite copy is still outstanding.

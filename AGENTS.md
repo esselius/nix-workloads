@@ -1,7 +1,8 @@
 # AI Maintenance Notes
 
 Scope: **workloads** running as incus instances on the `nix-homelab-hosts`
-cluster (`rpi5-8gb` today, `rpi5-4gb` later). This repo does not configure the
+cluster (`rpi5-8gb` and `rpi5-4gb`; `inventory.nix` placement decides which
+host runs each workload). This repo does not configure the
 incus daemon or the Pi hosts - that lives in
 `github.com/esselius/nix-homelab-hosts`. Here we only declare the instances
 (terranix -> OpenTofu) and the NixOS systems that run inside them.
@@ -21,14 +22,22 @@ down.
      deployed into the running instance with `nixos-rebuild`.
 - **Environments + inventory.** `inventory.nix` is the single source of truth for
   *where* each workload runs and is addressed: an *env* is one DNS zone + address
-  space (`homelab` = the Pi, `dev` = a local incus VM), hosts are incus servers,
-  and `placement` maps a service to a host. The zone is **flat** - a service has
-  one name (`mosquitto.<zone>`) whichever host runs it - so moving a workload is
-  a `placement` change, never a workload change. Never hard-code a domain or a
-  `10.43` address in a guest or a `terraform/<name>`: read `config.local.*`
-  (`domain`, `realm`, `dnsAddress`, ...) from `modules/local.nix` / the env's
-  host, and add new services to `inventory.nix`. The flake builds each guest for
-  both envs (`<name>` and `<name>-dev`; same for terranix).
+  space (`homelab` = the Pi pair, `dev` = a local incus VM), hosts are incus
+  servers, and `placement` maps a service to a host. The zone is **flat** - a
+  service has one name (`mosquitto.<zone>`) whichever host runs it - so moving a
+  workload is a `placement` change, never a workload change. Never hard-code a
+  domain or a `10.43` address in a guest or a `terraform/<name>`: read
+  `config.local.*` (`domain`, `realm`, `dnsAddress`, ...) from
+  `modules/local.nix` / the env's host, and add new services to
+  `inventory.nix`. The flake builds each guest for
+  both envs (`<name>` and `<name>-dev`; same for terranix). Resolve a workload's
+  incus remote through `inventory.hostFor` (`scripts/remote-for.sh`), never
+  through the env's `defaultHost`.
+- **DNS is infrastructure, not a guest.** `terraform/dns` owns the Incus network
+  zone from `inventory.nix`; it has no `nixosConfiguration`. Apply it with
+  `ENV=<env> task up -- dns`; `deploy-all`/`provision-all` do this before the
+  guest loop. `checks.dns-zone` fails evaluation on duplicate canonical/alias
+  names, and `task check -- dns` evaluates the terranix config.
 - **Dev testbed is macOS-only, route-free, and reuses the production CA.**
   Never route the Mac into the dev subnet: macOS/vmnet `bridge100` plus the
   WireGuard tunnel breaks the host's default route (apple/container #1881). The
