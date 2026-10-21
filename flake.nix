@@ -97,7 +97,10 @@
 
       # The DNS zone is shared infrastructure, not a guest workload. It still
       # uses the same terranix/tf wrapper, but has no nixosConfiguration.
-      tfWorkloads = workloads ++ [ "dns" ];
+      infraWorkloads = [ "dns" ];
+      infraAttrs = infraWorkloads ++ map (name: "${name}-dev") infraWorkloads;
+      tfWorkloads = workloads ++ infraWorkloads;
+      checkAttrs = allAttrs ++ infraAttrs;
 
       # Environments for the `tf` wrapper / Taskfile: each maps to the guest
       # system's attr suffix, its terranix state dir, and its incus remote.
@@ -245,16 +248,24 @@
           };
 
           # One check per workload, so the inner loop can evaluate a single
-          # guest (`task check -- <name>`) instead of every workload. Each
-          # forces this guest's toplevel and its terranix config (eval, not
-          # build): it fails if either stops evaluating.
-          evalChecks = lib.genAttrs allAttrs (
+          # workload (`task check -- <name>`) instead of every workload. Each
+          # forces the workload's toplevel (guests only) and its terranix config
+          # (eval, not build): it fails if either stops evaluating. DNS is
+          # terranix-only, so it has no toplevel to force.
+          evalChecks = lib.genAttrs checkAttrs (
             name:
+            let
+              guest = builtins.elem name allAttrs;
+            in
             builtins.deepSeq
-              [
-                self.nixosConfigurations.${name}.config.system.build.toplevel.drvPath
-                config.terranix.terranixConfigurations.${name}.result.terraformConfiguration.drvPath
-              ]
+              (
+                lib.optionals guest [
+                  self.nixosConfigurations.${name}.config.system.build.toplevel.drvPath
+                ]
+                ++ [
+                  config.terranix.terranixConfigurations.${name}.result.terraformConfiguration.drvPath
+                ]
+              )
               (
                 pkgs.runCommand "eval-${name}" { } ''
                   touch $out
@@ -362,13 +373,38 @@
           };
 
           checks = evalChecks // {
+            # Inventory-level DNS invariant: the terraform/dns config writes one
+            # A record per service and one CNAME per alias, keyed by name. Two
+            # services claiming the same name (or a canonical name colliding
+            # with an alias) would silently overwrite the other record, so fail
+            # the eval instead.
+            dns-zone =
+              let
+                names = lib.concatMap (
+                  name:
+                  let
+                    svc = inv.services.${name};
+                  in
+                  lib.optionals (svc.dns != [ ]) (
+                    [ name ] ++ lib.filter (alias: alias != name && alias != "ns1") svc.dns
+                  )
+                ) (builtins.attrNames inv.services);
+                duplicate = lib.filter (name: builtins.length (lib.filter (x: x == name) names) > 1) (
+                  lib.unique names
+                );
+              in
+              if duplicate != [ ] then
+                throw "duplicate DNS names in inventory: ${lib.concatStringsSep ", " duplicate}"
+              else
+                pkgs.runCommand "dns-zone" { } "touch $out";
+
             # Aggregate, so `nix flake check` / `task check` still covers every
             # workload. It just builds the per-workload checks.
             eval-all = pkgs.linkFarm "eval-all" (
               map (name: {
                 name = name;
                 path = evalChecks.${name};
-              }) allAttrs
+              }) checkAttrs
             );
 
             # systemd-journal-remote rejects SplitMode=none unless --output is
