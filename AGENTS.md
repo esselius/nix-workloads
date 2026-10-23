@@ -119,3 +119,34 @@ down.
   (`source=/dev/serial/by-id/<id>`, `path=/dev/ttyACM0`) or follow replugs with
   `unix-hotplug` (both are container-only device types; a VM needs `usb`). See
   README "Known risks".
+
+## Issue tracking (beads)
+
+Long-horizon work lives in `bd` (beads), installed by the devShell; it is not a
+markdown TODO list. `bd prime` prints the current workflow and memories.
+
+- Beads is the **only** issue and status tracker. Do not add status tables or
+  TODO lists to README/EXPERIMENTS.md/AGENTS.md: keep experiment designs and
+  measurements in EXPERIMENTS.md, constraints in README "Known risks", and point
+  at the bead for state (`bd list -l experiment`).
+- Pick work with `bd ready --json` (only unblocked issues), read it with
+  `bd show <id>`, claim it with `bd update <id> --claim`, close it with
+  `bd close <id> "<what landed>"`. Model blockers with
+  `bd dep add <child> <parent>` so "offsite backup" waits on the repo checks
+  that must come first, etc.
+- Use `bd remember "..."` for durable, non-obvious facts learned while working
+  (e.g. a host quirk). This file (`AGENTS.md`) stays human-owned and is the
+  source of truth for rules; do not copy its bullets into beads, and do not let
+  `bd init` rewrite it (`--skip-agents --skip-hooks`).
+- Beads tracks *intent*; it is not live state. `task doctor`, `task verify`,
+  `task snapshots` and the restore drills remain the authority on whether
+  something is actually healthy. A bead is closed only after those pass.
+- `.beads/metadata.json`, `config.yaml` and `issues.jsonl` are tracked;
+  `.beads/embeddeddolt/` is gitignored (local Dolt database). Never commit the
+  database directory or `.beads-credential-key`.
+- The dev-first rule still applies: a bead that changes a guest is not done
+  until it has passed `ENV=dev task deploy` + `task verify`, not just locally.
+- Ignore `bd prime`'s "session close protocol": like any other change, beads
+  work is committed and pushed only when the operator asks. `bd init` itself
+  makes an initial commit, which is why it is run with `--skip-agents
+  --skip-hooks` and the result reviewed.

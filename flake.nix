@@ -342,6 +342,9 @@
               pkgs.sops
               pkgs.age
               pkgs.ssh-to-age
+              # Persistent, dependency-aware task memory for agents (`bd`).
+              # See AGENTS.md "Issue tracking (beads)".
+              pkgs.beads
               # `task dr-restore`: restic copy a homelab repo into the dev env.
               pkgs.restic
               # Administer the kanidm (idm) workload; Kanidm is CLI-first.

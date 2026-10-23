@@ -8,6 +8,14 @@ These workloads are the critical smart-home services that used to run on the
 Home Assistant. They now run in incus instances here, so `adama` can be rebuilt,
 replaced, or retired without taking lights, heating, or the broker down.
 
+## Open work
+
+Issues, decisions and experiment status live in `bd` (beads), which is the
+repo's **only** issue and status tracker. Run `bd ready` for unblocked work,
+`bd list --all` for everything, and `bd show <id>` for details. This README
+documents how the workloads work, `EXPERIMENTS.md` keeps the measurements, and
+"Known risks" below records constraints - none of those track status.
+
 ## Three layers
 
 | Layer | Where | Tool | Owns |
@@ -483,7 +491,7 @@ everything else on 26.05. The overlay - rather than setting
 `services.home-assistant.package` - is what keeps the module's
 `buildHomeAssistantComponent` and our `pkgs/*.nix` custom components on the same
 HA/python. Drop the input and `homeAssistantOverlay` (`flake.nix`) once NixOS
-26.11 ships HA 2026.9+.
+26.11 ships HA 2026.9+ (tracked as `nix-workloads-v6m`).
 
 ## Monitoring (app metrics + dashboards)
 
@@ -624,7 +632,7 @@ same pattern as the Zigbee2MQTT frontend).
 - **No cluster**: `rpi5-8gb` and `rpi5-4gb` are standalone incus servers. There
   is no failover; `rpi5-8gb` remains a single point of failure for Attic, DNS
   and most smart-home services. The migration removed the *host-rebuild*
-  coupling, not the hardware SPOF.
+  coupling, not the hardware SPOF. Tracked as `nix-workloads-xp2`.
 - **Secrets**: broker passwords, the Zigbee2MQTT network key, and Postgres
   credentials must go through sops/age (as in `nix-homelab-hosts`), never as
   literals in these configs.
@@ -632,4 +640,4 @@ same pattern as the Zigbee2MQTT frontend).
   `backup` workload (now on `rpi5-4gb`) receives the restic snapshots from the
   other guests. That separates backups from `rpi5-8gb` failure, but a loss of
   `rpi5-4gb` loses the backup target, and a full loss of both loses everything.
-  An offsite copy is still outstanding.
+  An offsite copy is still outstanding (`nix-workloads-o1m`).

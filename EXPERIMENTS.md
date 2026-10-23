@@ -4,17 +4,15 @@ Track one change at a time. Annotate `Capacity / Density` and
 `Pressure / Cache Risk` in Grafana before and after each step, then compare over
 at least 24 h (use 1–2 h only for quick signal checks).
 
-## Status (2026-10-18)
+## Tracking
 
-| ID | State | Notes |
-|---|---|---|
-| E1/E2 | **running** | cache rebalance applied; observation window started 2026-10-18 ~15:35 UTC; do not change anything else until it settles |
-| E3 | **running** | monitoring `limits.memory.swap` 256→512 MiB (applied 16:07 UTC); swap events/high/max/fail still 0, swap use 167 MiB, zram RAM 196 MiB |
-| E4 | reverted | zram/swappiness change reverted; re-run after E1/E2 |
-| E5 | partial | dev-only: 256 MiB hard-limit `oom-test` container stopped on a 512 MiB `/dev/shm` allocation; cgroup OOM path validated, host-level priority ordering not forced |
-| E7 | **rejected, reverted** | pilot ran 17:27–18:40 UTC on monitoring/HA/z2m/mosquitto with `use_zero_pages=1` and scan-time advisor. Best: sharing ~2041 pages (~8 MiB) + zero pages ~8067 (~32 MiB) ≈ **40 MiB gross / ~35 MiB net**, while `ksmd` burned ~6.7 % of one core and `cow_ksm` rose to ~15 copies/s. Not worth fleet rollout; KSM stopped (`run=2`) and the host/guest KSM code removed |
-| E8 | complete | duperemove dedup on container rootfs `/nix/store`: btrfs used 23.81 GiB → 19.15 GiB (~4.66 GiB); not reversible |
-| E6, E9 | structural | deferred |
+Experiment **status lives in beads** (`bd`), the repo's single issue tracker;
+this file keeps the design, measurements and verdicts. Use
+`bd list -l experiment` for current state and `bd show <id>` for details. Each
+experiment names its bead below.
+
+The measurements and check-ins in this file are historical (2026-10-18); do not
+read them as current status.
 
 > 2026-10-19: DNS moved out of the workload fleet. Incus now serves the
 > `int.esselius.dev` network zone over AXFR; the host-level Unbound resolver is
@@ -106,6 +104,8 @@ and re-read, so the cache is smaller than the working set.
 
 ### E1 — Give cache back to the refaulting instances
 
+Status: `nix-workloads-qtk` (E1/E2 share one bead).
+
 - **Hypothesis:** monitoring, zigbee2mqtt, backup, step-ca and mosquitto need
   more cache than their limits allow.
 - **Change:** raise limits: monitoring `1280→1536MiB`, zigbee2mqtt
@@ -122,6 +122,8 @@ and re-read, so the cache is smaller than the working set.
 
 ### E2 — Reclaim cold cache from the quiet instances
 
+Status: `nix-workloads-qtk` (E1/E2 share one bead).
+
 - **Hypothesis:** attic, homepage, node-red, kanidm and home-assistant hold
   large `inactive_file` with zero refaults, so their limits can shrink.
 - **Change:** attic `512→384MiB`, homepage `512→384MiB`, node-red
@@ -131,6 +133,8 @@ and re-read, so the cache is smaller than the working set.
 - **Rollback:** revert the `memory` table in `inventory.nix`.
 
 ### E3 — zram is the swap budget; prove it absorbs a little more
+
+Status: `nix-workloads-640`.
 
 - **Hypothesis:** the host can use more zram before the containers need more
   RAM, without touching the NVMe.
@@ -143,6 +147,8 @@ and re-read, so the cache is smaller than the working set.
 
 ### E4 — zram tuning: memoryPercent and swappiness
 
+Status: `nix-workloads-e10` (blocked on E1/E2).
+
 - **Hypothesis:** 50 % zram with default swappiness under-uses the compressed
   swap that is already paid for.
 - **Change (host repo):** `zramSwap.memoryPercent = 75`; consider
@@ -153,6 +159,8 @@ and re-read, so the cache is smaller than the working set.
 - **Rollback:** revert `modules/zram.nix` / sysctls.
 
 ### E5 — OOM policy under real pressure (dev first)
+
+Status: `nix-workloads-ybt`.
 
 - **Hypothesis:** the chosen `oom_priority` ordering protects the smart-home
   services and sacrifices batch work first.
@@ -165,6 +173,8 @@ and re-read, so the cache is smaller than the working set.
 - **Rollback:** stop the hog / destroy the dev guest.
 
 ### E6 — Replace or tune per-guest Alloy
+
+Status: `nix-workloads-6md` (deferred).
 
 **Measured baseline** (cgroup `alloy.service`, per guest): RSS 99–219 MiB,
 `anon` 56–94 MiB, `file` 87–259 MiB, `current` 148–357 MiB. Fleet `anon`
@@ -252,6 +262,8 @@ Loki log continuity, failed-unit alerting.
 
 ### E7 — KSM: measure before committing
 
+Status: `nix-workloads-44n` (closed: rejected and reverted).
+
 - **Hypothesis:** KSM can deduplicate anonymous pages across guests, but only if
   pages are marked mergeable.
 - **Change (host):** `hardware.ksm.enable = true`; per guest, set
@@ -265,6 +277,8 @@ Loki log continuity, failed-unit alerting.
 
 ### E8 — btrfs dedup: disk only, not density
 
+Status: `nix-workloads-y6y` (closed: complete).
+
 - **Hypothesis:** identical Nix-store content across container rootfs can be
   deduplicated.
 - **Change:** dry-run `duperemove` over the container subvolumes; if the gain is
@@ -277,6 +291,8 @@ Loki log continuity, failed-unit alerting.
 - **Rollback:** remove the timer/service.
 
 ### E9 — Shared Nix store (design + reliability)
+
+Status: `nix-workloads-1pi` (deferred).
 
 - **Hypothesis:** a shared read-only store (with per-guest overlay) shares page
   cache and removes duplicate file cache across guests.

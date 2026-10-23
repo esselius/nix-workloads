@@ -11,3 +11,8 @@ terraform/*/*/config.tf.json
 
 # Local `dev` env terranix state (never committed).
 terraform/dev/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
