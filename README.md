@@ -238,6 +238,9 @@ COPY=1 task deploy -- example      # first deploy (copies the closure)
 task deploy -- example             # later deploys substitute from the cache
 task verify -- example             # systemd + main-service smoke test
 task rollback -- example           # previous NixOS generation + verify
+task snap -- example               # incus data-volume snapshot (rollback point)
+task snapshots -- example          # list the data-volume snapshots
+task restore-snap -- example       # restore the latest (stops/starts the guest)
 task deploy-all                    # apply DNS, then deploy every guest in order
 task provision-all                 # apply DNS, then up/onboard/cache-push/first-deploy every guest
 task fmt                           # nix fmt
@@ -565,9 +568,55 @@ VictoriaMetrics. The "Backups" Grafana dashboard shows last-backup age, repo
 size, snapshot counts and check status, and two alerts - `Backup stale` (>48h)
 and `Backup integrity check failed` - route to ntfy like the rest.
 
-Caveat: this is **local only** - the repositories live on `rpi5-8gb`'s pool, so a
-board loss loses the backups too. Add an offsite rclone/B2 copy of the
+Caveat: this is **local only** - the repositories live on `rpi5-4gb`'s pool, so a
+loss of that board loses the backups too. Add an offsite rclone/B2 copy of the
 `backup-data` repo when that matters (see Known risks).
+
+### Rollback snapshots (incus)
+
+Incus snapshots are the fast, local undo layer; they do not replace restic.
+Every data volume gets a scheduled policy from `terraform/common.nix`
+(`local.snapshotPolicies`): daily at 02:15 with 7-day expiry for workload
+volumes, weekly for `monitoring-data` (large, regenerable TSDB/Loki history),
+and daily at 05:00 with 14-day expiry for `backup-data`. `step-ca` has no custom
+volume (its badger DB lives on the rootfs), so its instance is snapshotted
+daily instead. `attic-data` is a regenerable cache and is not snapshotted.
+
+Incus instance snapshots and `incus export` do **not** include attached custom
+volumes, which is why the policy is applied to the volumes rather than the
+instances.
+
+```fish
+task snap -- home-assistant                  # all attached volumes
+task snap -- home-assistant before-upgrade   # named
+task snapshots -- home-assistant
+task restore-snap -- home-assistant          # latest; stops, restores, starts
+task restore-snap -- home-assistant before-upgrade
+```
+
+`task deploy` takes a `pre-deploy-<timestamp>` snapshot of the guest's data
+volumes (7-day expiry) before switching, so a bad deploy has a matching data
+rollback point. `SNAPSHOT=0 task deploy -- <name>` skips it. `task rollback`
+remains the NixOS-generation rollback; `task restore-snap` is the data
+counterpart. Apply the policy per workload with `task up -- <name>` (or
+`task plan -- <name>` first); it only changes the volumes' `snapshots.*` keys.
+
+Because `step-ca` is snapshotted as an instance, restoring it also rolls back
+the OS generation; run `task deploy -- step-ca` afterwards to reapply the
+current system.
+
+Restoring is destructive and requires the guest to be stopped; the command does
+both. Restoring an older snapshot deletes newer snapshots (incus refuses
+otherwise on ZFS); the command lists them and requires `--force`. These
+snapshots are crash-consistent and live in the same pool: use restic for
+database recovery, off-host protection and point-in-time history.
+
+To inspect a snapshot without overwriting production, copy it to a new volume
+and attach it to a scratch instance:
+
+```fish
+incus storage volume copy default/home-assistant-data/<snap> default/home-assistant-data-check
+```
 
 ### Restore drill
 

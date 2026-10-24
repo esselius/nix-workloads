@@ -116,6 +116,15 @@ tasks:
 
         system="$(nix build ".#nixosConfigurations.$attr.config.system.build.toplevel" --no-link --print-out-paths --option ssl-cert-file "$ca" --option narinfo-cache-negative-ttl 0)"
 
+        # Incus rollback point for the data volumes before the switch. The
+        # NixOS generation already covers the OS, so only custom volumes are
+        # snapshotted; step-ca (rootfs state) is snapshotted on a schedule by
+        # terraform. Set SNAPSHOT=0 to skip.
+        if [ "${SNAPSHOT:-1}" != 0 ]; then
+          echo "==> data snapshot before deploy"
+          scripts/guest-snapshot.sh "$env" "$name" create "pre-deploy-$(date +%Y%m%d-%H%M%S)" --expiry 7d --volumes-only
+        fi
+
         use_subs="--use-substitutes"
         ssh_opts="-o StrictHostKeyChecking=accept-new"
         if [ "$env" = homelab ]; then
@@ -204,6 +213,35 @@ tasks:
           echo "warning: activation reported failed units; checking actual state" >&2
         fi
         scripts/verify-guest.sh "$env" "$name"
+
+  snap:
+    desc: "Create an incus snapshot of a guest's data volumes. Usage: task snap -- <name> [label]"
+    cmds:
+      - |
+        set -e
+        set -- {{.CLI_ARGS}}
+        name="${1:?Usage: task snap -- <name> [label]}"
+        shift
+        scripts/guest-snapshot.sh "${ENV:-homelab}" "$name" create "$@"
+
+  snapshots:
+    desc: "List a guest's incus data-volume snapshots. Usage: task snapshots -- <name>"
+    cmds:
+      - |
+        set -e
+        set -- {{.CLI_ARGS}}
+        name="${1:?Usage: task snapshots -- <name>}"
+        scripts/guest-snapshot.sh "${ENV:-homelab}" "$name" list
+
+  restore-snap:
+    desc: "Restore a guest's data volumes from an incus snapshot. Usage: task restore-snap -- <name> [snapshot] [--force]"
+    cmds:
+      - |
+        set -e
+        set -- {{.CLI_ARGS}}
+        name="${1:?Usage: task restore-snap -- <name> [snapshot] [--force]}"
+        shift
+        scripts/guest-snapshot.sh "${ENV:-homelab}" "$name" restore "$@"
 
   cache-push:
     desc: "Push a workload's system closure to Attic and Cachix. Usage: task cache-push -- <name>"

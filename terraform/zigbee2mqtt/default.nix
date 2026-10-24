@@ -15,6 +15,8 @@ in
     pool = config.local.storagePool;
     content_type = "filesystem";
 
+    config = config.local.snapshotPolicies.daily;
+
     # Guard the Zigbee state: `task down` (tofu destroy) refuses rather than
     # silently wiping it. Remove this block (or `tofu state rm` the volume) to
     # actually reclaim the space.

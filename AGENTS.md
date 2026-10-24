@@ -66,7 +66,10 @@ down.
   host-labelled metrics defines a `host` query variable sourced from the metric's
   own host label (`up{node_type="host"}` for host-level metrics, the exporter's
   metric for app dashboards) with `includeAll` + `allValue: ".*"`, and applies it
-  as `host=~"$host"` in every query; legends include `{{host}}`. Add dependent
+  as `host=~"$host"` in every query; legends include `{{host}}`. If the
+  dashboard also has Loki log panels whose stream selector is *only*
+  `{host=~"$host"}`, use `allValue: ".+"` - Loki rejects a selector made solely
+  of empty-compatible matchers (`host=~".*"`). Add dependent
   variables (`instance`, `type`, `device`, ...) the same way rather than
   hard-coding a host.
 - Never commit plaintext secrets. Smart-home services need broker passwords, the
@@ -113,6 +116,18 @@ down.
   neither cache can serve fails the deploy instead of being copied from the
   builder. The first deploy (`COPY=1`) and `attic`/`step-ca` may copy because
   they bootstrap the cache. See README "Build cache (Attic + Cachix)".
+- Keep the two recovery layers separate. Restic (`modules/backup.nix`) is the
+  backup: off-host, encrypted, deduplicated, application-consistent (HA's
+  `pg_dump`) and drilled. Incus custom-volume snapshots are the local,
+  crash-consistent rollback layer: policies in `terraform/common.nix`
+  (`local.snapshotPolicies`), `task snap`/`task snapshots`/`task restore-snap`,
+  and a `pre-deploy-*` snapshot in `task deploy` (`SNAPSHOT=0` skips it).
+  Incus instance snapshots and `incus export` do **not** include attached
+  custom volumes, so snapshot the volumes, not the instances. `step-ca` is the
+  exception (its DB is on the rootfs) and deliberately snapshots its instance;
+  `attic-data` is a regenerable cache and is not snapshotted. `backup-data` is
+  snapshotted too, but that only protects against a bad `restic forget`/repo
+  corruption, not against losing the host - an offsite copy is still the gap.
 - The USB Zigbee coordinator is physical, so a Zigbee2MQTT workload is pinned to
   the board the dongle is plugged into (never migrates with the instance). It can
   be a container: pass the host's `cdc_acm` node with a `unix-char` device

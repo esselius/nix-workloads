@@ -13,6 +13,8 @@ in
     pool = config.local.storagePool;
     content_type = "filesystem";
 
+    config = config.local.snapshotPolicies.daily;
+
     lifecycle.prevent_destroy = true;
   };
 

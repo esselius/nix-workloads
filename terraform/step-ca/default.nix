@@ -18,11 +18,16 @@ in
     ];
     running = true;
 
+    # step-ca is the one stateful guest without a custom volume: its badger DB
+    # lives on the rootfs (/var/lib/step-ca). Snapshot the instance itself so
+    # `task snap`/`task restore-snap` cover it; the restic job remains the
+    # off-host backup.
     config = {
       "limits.memory" = mem.limit;
       "limits.memory.swap" = mem.swap;
       "limits.memory.oom_priority" = mem.oomPriority;
-    };
+    }
+    // config.local.snapshotPolicies.daily;
 
     # Instance-level eth0 override. incus validates the instance device on its
     # own (it does not inherit the profile's `network`), so the full NIC has to

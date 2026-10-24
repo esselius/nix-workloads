@@ -17,6 +17,12 @@ in
     pool = config.local.storagePool;
     content_type = "filesystem";
 
+    # Daily incus snapshot of the restic repositories. They live in the same
+    # pool, so this is not an offsite copy - it protects against a bad
+    # `restic forget`/repo corruption, not against losing rpi5-4gb. See README
+    # "Rollback snapshots (incus)".
+    config = config.local.snapshotPolicies.backup;
+
     # Guard the backups: `task down` (tofu destroy) refuses rather than silently
     # wiping them. Remove this block (or `tofu state rm` the volume) to reclaim
     # the space.

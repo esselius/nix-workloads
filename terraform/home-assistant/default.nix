@@ -15,6 +15,8 @@ in
     pool = config.local.storagePool;
     content_type = "filesystem";
 
+    config = config.local.snapshotPolicies.daily;
+
     # Guard the config/state: `task down` (tofu destroy) refuses rather than
     # silently wiping it. Remove this block (or `tofu state rm` the volume) to
     # actually reclaim the space.
@@ -29,6 +31,11 @@ in
     name = "home-assistant-postgres";
     pool = config.local.storagePool;
     content_type = "filesystem";
+
+    # Crash-consistent only: use the restic `pg_dump` (local.backup.prepareCommand)
+    # for a true database restore. The snapshot's value is a matching rollback
+    # point for the config volume.
+    config = config.local.snapshotPolicies.daily;
 
     lifecycle.prevent_destroy = true;
   };

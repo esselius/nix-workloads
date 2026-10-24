@@ -41,6 +41,16 @@ in
     description = "Attach the macvlan eth1 LAN NIC.";
   };
 
+  # Incus-native snapshot settings for custom data volumes (and the step-ca
+  # instance, whose state lives on the rootfs). These are rollback points, not
+  # backups: they stay on the same pool and are crash-consistent. The restic
+  # jobs remain the off-host, application-consistent backup. See README
+  # "Rollback snapshots (incus)".
+  options.local.snapshotPolicies = lib.mkOption {
+    type = lib.types.attrsOf (lib.types.attrsOf lib.types.str);
+    description = "Reusable incus `snapshots.*` config maps, keyed by policy name.";
+  };
+
   # Which incus server OpenTofu drives, from the env's host in the inventory.
   options.local.incus = {
     defaultRemote = lib.mkOption {
@@ -81,6 +91,30 @@ in
     );
     local.incus.generateClientCertificates = lib.mkDefault (config.local.env == "homelab");
     local.incus.acceptRemoteCertificate = lib.mkDefault true;
+
+    # `snapshots.pattern` is a Pongo2 template; format the timestamp so the
+    # generated names are valid incus snapshot names. Scheduled snapshots are
+    # taken before the restic job (03:30 + up to 1h jitter) and are pruned by
+    # incus after their expiry. The backup repo gets a longer window than the
+    # workload volumes; the metrics/logs volume is weekly because its TSDB/Loki
+    # churn is large and its history is regenerable.
+    local.snapshotPolicies = {
+      daily = {
+        "snapshots.schedule" = "15 2 * * *";
+        "snapshots.expiry" = "7d";
+        "snapshots.pattern" = "snap-{{ creation_date|date:'2006-01-02_15-04-05' }}";
+      };
+      weekly = {
+        "snapshots.schedule" = "30 2 * * 0";
+        "snapshots.expiry" = "14d";
+        "snapshots.pattern" = "snap-{{ creation_date|date:'2006-01-02_15-04-05' }}";
+      };
+      backup = {
+        "snapshots.schedule" = "0 5 * * *";
+        "snapshots.expiry" = "14d";
+        "snapshots.pattern" = "snap-{{ creation_date|date:'2006-01-02_15-04-05' }}";
+      };
+    };
 
     terraform.required_providers.incus = {
       source = "lxc/incus";

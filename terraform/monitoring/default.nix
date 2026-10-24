@@ -16,6 +16,10 @@ in
     pool = config.local.storagePool;
     content_type = "filesystem";
 
+    # The TSDB/Loki churn is large and regenerable; a weekly rollback point is
+    # enough (the restic job only protects Grafana state). See README.
+    config = config.local.snapshotPolicies.weekly;
+
     # Guard the metrics/logs history: `task down` (tofu destroy) refuses rather
     # than silently wiping it. Remove this block (or `tofu state rm` the volume)
     # to actually reclaim the space.
