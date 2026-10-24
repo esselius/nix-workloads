@@ -60,7 +60,7 @@
         "overrides": []
       },
       "targets": [
-        { "refId": "A", "expr": "pg_exporter_last_scrape_error{host=~\"$host\", job=\"postgres\"} == 0", "instant": true }
+        { "refId": "A", "expr": "pg_up{host=~\"$host\", job=\"postgres\"}", "instant": true }
       ]
     },
     {

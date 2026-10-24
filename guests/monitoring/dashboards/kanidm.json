@@ -22,7 +22,7 @@
         "definition": "label_values(node_systemd_unit_state{name=\"kanidm.service\"}, host)",
         "includeAll": true,
         "multi": true,
-        "allValue": ".*",
+        "allValue": ".+",
         "current": {
           "selected": true,
           "text": [
